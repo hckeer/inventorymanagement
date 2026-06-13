@@ -1,0 +1,38 @@
+name: inventorymanagement
+description: "Film Equipment Rental — Inventory Management System"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Supabase client + auth + realtime
+  supabase_flutter: 2.8.4
+
+  # State management (manual providers, no codegen)
+  flutter_riverpod: 2.6.1
+
+  # Declarative navigation + ShellRoute
+  go_router: 14.6.3
+
+  # Date formatting
+  intl: 0.20.2
+
+  # Premium typography (Outfit font)
+  google_fonts: 6.2.1
+
+  # Barcode and QR code scanning
+  mobile_scanner: 5.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 5.0.0
+
+flutter:
+  uses-material-design: true
+  # No assets needed for V1 — no images, no fonts files (google_fonts downloads at runtime)
