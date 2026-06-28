@@ -1,0 +1,9 @@
+[project]
+name = "lightbenders_warehouse"
+version = "0.1.0"
+description = "Lightbenders warehouse containers and equipment assemblies for ERPNext v16"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

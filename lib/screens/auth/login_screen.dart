@@ -51,9 +51,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     try {
       await ref.read(authRepositoryProvider).signIn(
-            email: _emailCtrl.text.trim(),
+            username: _emailCtrl.text.trim(),
             password: _passwordCtrl.text,
           );
+      ref.read(authRevisionProvider.notifier).state++;
       if (mounted) context.go('/dashboard');
     } catch (e) {
       setState(() {

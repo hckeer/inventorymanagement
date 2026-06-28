@@ -68,9 +68,19 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
       );
 
       if (_isEditing) {
-        await ref.read(equipmentListProvider.notifier).updateEquipment(equipment);
+        await ref.read(equipmentListProvider.notifier).updateEquipment(
+              equipment,
+              newSerialNo: _serialCtrl.text.trim().isEmpty
+                  ? null
+                  : _serialCtrl.text.trim(),
+            );
       } else {
-        await ref.read(equipmentListProvider.notifier).create(equipment);
+        await ref.read(equipmentListProvider.notifier).create(
+              equipment,
+              serialNo: _serialCtrl.text.trim().isEmpty
+                  ? null
+                  : _serialCtrl.text.trim(),
+            );
       }
 
       if (mounted) context.pop();
@@ -78,7 +88,7 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(handleSupabaseError(e)),
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
             backgroundColor: const Color(0xFFFF5252),
           ),
         );
@@ -121,7 +131,7 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
       ),
       body: categoriesAsync.when(
         loading: () => const AppLoading(),
-        error: (e, _) => AppError(message: handleSupabaseError(e)),
+        error: (e, _) => AppError(message: handleAppError(e)),
         data: (categories) => Form(
           key: _formKey,
           child: ListView(

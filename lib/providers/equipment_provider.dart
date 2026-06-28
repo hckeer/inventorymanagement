@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/equipment_repository.dart';
 import '../models/equipment.dart';
+import '../models/equipment_detail.dart';
 import '../models/rental_history_entry.dart';
 
 final equipmentRepositoryProvider = Provider<EquipmentRepository>(
@@ -25,9 +26,9 @@ class EquipmentListNotifier extends AsyncNotifier<List<Equipment>> {
   }
 
   /// Creates equipment and refreshes the list.
-  Future<void> create(Equipment equipment) async {
+  Future<void> create(Equipment equipment, {String? serialNo}) async {
     try {
-      await _repo.create(equipment: equipment);
+      await _repo.create(equipment: equipment, serialNo: serialNo);
       ref.invalidateSelf();
     } catch (e, st) {
       state = AsyncError(e, st);
@@ -36,9 +37,12 @@ class EquipmentListNotifier extends AsyncNotifier<List<Equipment>> {
   }
 
   /// Updates equipment and refreshes the list.
-  Future<void> updateEquipment(Equipment equipment) async {
+  Future<void> updateEquipment(
+    Equipment equipment, {
+    String? newSerialNo,
+  }) async {
     try {
-      await _repo.update(equipment: equipment);
+      await _repo.update(equipment: equipment, newSerialNo: newSerialNo);
       ref.invalidateSelf();
     } catch (e, st) {
       state = AsyncError(e, st);
@@ -66,6 +70,15 @@ final equipmentDetailProvider =
     FutureProvider.family<Equipment, String>((ref, id) async {
   try {
     return await ref.read(equipmentRepositoryProvider).getById(id: id);
+  } catch (e, st) {
+    Error.throwWithStackTrace(e, st);
+  }
+});
+
+final equipmentDetailFullProvider =
+    FutureProvider.family<EquipmentDetail, String>((ref, id) async {
+  try {
+    return await ref.read(equipmentRepositoryProvider).getDetail(id: id);
   } catch (e, st) {
     Error.throwWithStackTrace(e, st);
   }

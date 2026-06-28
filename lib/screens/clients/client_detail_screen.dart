@@ -34,7 +34,7 @@ class ClientDetailScreen extends ConsumerWidget {
       body: clientAsync.when(
         loading: () => const AppLoading(),
         error: (e, _) => AppError(
-          message: handleSupabaseError(e),
+          message: handleAppError(e),
           onRetry: () => ref.invalidate(clientDetailProvider(id)),
         ),
         data: (client) => ListView(

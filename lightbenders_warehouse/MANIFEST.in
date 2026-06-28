@@ -1,0 +1,10 @@
+include MANIFEST.in
+include requirements.txt
+include README.md
+recursive-include lightbenders_warehouse *.json
+recursive-include lightbenders_warehouse *.js
+recursive-include lightbenders_warehouse *.md
+recursive-include lightbenders_warehouse *.html
+recursive-include lightbenders_warehouse *.css
+recursive-include lightbenders_warehouse *.py
+recursive-include lightbenders_warehouse *.txt

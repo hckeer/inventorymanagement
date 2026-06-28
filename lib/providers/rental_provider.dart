@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/rental_repository.dart';
 import '../repositories/rental_item_repository.dart';
 import '../models/rental.dart';
+import '../models/rental_line_input.dart';
 import '../models/rental_item.dart';
 
 final rentalRepositoryProvider = Provider<RentalRepository>(
@@ -29,23 +30,22 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
     return _repo.getAll();
   }
 
-  /// Creates a rental via RPC and refreshes the list.
-  /// Returns the new rental UUID.
-  Future<String> createViaRpc({
+  /// Creates a rental via MCP (draft + submit) and refreshes the list.
+  Future<String> createAndSubmit({
     required String clientId,
     required DateTime startDate,
     required DateTime endDate,
-    required List<String> equipmentIds,
+    required List<RentalLineInput> lines,
     required double depositAmount,
     required bool depositPaid,
     String? notes,
   }) async {
     try {
-      final id = await _repo.createViaRpc(
+      final id = await _repo.createAndSubmit(
         clientId: clientId,
         startDate: startDate,
         endDate: endDate,
-        equipmentIds: equipmentIds,
+        lines: lines,
         depositAmount: depositAmount,
         depositPaid: depositPaid,
         notes: notes,
@@ -72,7 +72,7 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
   /// Marks a rental as returned via RPC and refreshes the list.
   Future<void> markReturned(String rentalId) async {
     try {
-      await _repo.markReturnedViaRpc(rentalId: rentalId);
+      await _repo.markReturned(rentalId: rentalId);
       ref.invalidateSelf();
     } catch (e, st) {
       state = AsyncError(e, st);

@@ -4,6 +4,7 @@ class Equipment {
   final String categoryId;
   final String status;
   final double dailyRate;
+  final bool hasSerialNo;
   final String? serialNo;
   final String? notes;
   final DateTime createdAt;
@@ -15,6 +16,7 @@ class Equipment {
     required this.categoryId,
     required this.status,
     required this.dailyRate,
+    this.hasSerialNo = true,
     this.serialNo,
     this.notes,
     required this.createdAt,
@@ -32,11 +34,82 @@ class Equipment {
       categoryId: json['category_id'] as String,
       status: json['status'] as String,
       dailyRate: (json['daily_rate'] as num).toDouble(),
+      hasSerialNo: json['has_serial_no'] as bool? ?? true,
       serialNo: json['serial_no'] as String?,
       notes: json['notes'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
+  }
+
+  factory Equipment.fromErpNextItem(Map<String, dynamic> json) {
+    final now = DateTime.now();
+    return Equipment(
+      id: json['name'] as String,
+      name: json['item_name'] as String? ?? json['name'] as String,
+      categoryId: json['item_group'] as String? ?? '',
+      status: deriveItemStatus(
+        item: json,
+        serials: const [],
+      ),
+      dailyRate: (json['standard_rate'] as num?)?.toDouble() ?? 0,
+      hasSerialNo: (json['has_serial_no'] as num? ?? 1) == 1,
+      serialNo: null,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  /// Derives aggregate status from ERPNext item + serial rows (flutter_erpnextmcp.md).
+  static String deriveItemStatus({
+    required Map<String, dynamic> item,
+    required List<Map<String, dynamic>> serials,
+    Set<String> rentedSerials = const {},
+  }) {
+    if ((item['disabled'] as num? ?? 0) == 1) {
+      return 'retired';
+    }
+
+    final hasSerial = (item['has_serial_no'] as num? ?? 0) == 1;
+    if (!hasSerial) {
+      return 'available';
+    }
+
+    if (serials.isEmpty) {
+      return 'available';
+    }
+
+    var anyRented = false;
+    var anyMaintenance = false;
+    var anyActive = false;
+
+    for (final serial in serials) {
+      final name = serial['name'] as String? ?? '';
+      final warehouse = (serial['warehouse'] as String? ?? '').toLowerCase();
+      final serialStatus = (serial['status'] as String? ?? '').toLowerCase();
+
+      if (rentedSerials.contains(name)) {
+        anyRented = true;
+      }
+      if (warehouse.contains('maintenance') || serialStatus == 'maintenance') {
+        anyMaintenance = true;
+      }
+      if (serialStatus == 'active' || serialStatus == 'delivered') {
+        anyActive = true;
+      }
+    }
+
+    if (anyRented) {
+      return 'rented';
+    }
+    if (anyMaintenance) {
+      return 'maintenance';
+    }
+    if (anyActive || serials.isNotEmpty) {
+      return 'available';
+    }
+    return 'retired';
   }
 
   Map<String, dynamic> toJson() {
@@ -46,6 +119,7 @@ class Equipment {
       'category_id': categoryId,
       'status': status,
       'daily_rate': dailyRate,
+      'has_serial_no': hasSerialNo,
       'serial_no': serialNo,
       'notes': notes,
       'created_at': createdAt.toIso8601String(),

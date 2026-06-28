@@ -36,6 +36,20 @@ class Client {
     );
   }
 
+  factory Client.fromErpNextCustomer(Map<String, dynamic> json) {
+    final now = DateTime.now();
+    return Client(
+      id: json['name'] as String,
+      fullName: json['customer_name'] as String? ?? json['name'] as String,
+      phone: json['mobile_no'] as String?,
+      email: json['email_id'] as String?,
+      idDocument: json['id_document'] as String?,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

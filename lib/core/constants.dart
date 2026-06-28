@@ -1,20 +1,18 @@
 // ---------------------------------------------------------------------------
-// Environment variables — pass via --dart-define at build/run time:
-//   --dart-define=SUPABASE_URL=https://xxx.supabase.co
-//   --dart-define=SUPABASE_ANON_KEY=eyJ...
+// MCP API — pass via --dart-define at build/run time:
+//   --dart-define=MCP_BASE_URL=http://localhost:3001
+//   --dart-define=MCP_API_VERSION=v1
 // ---------------------------------------------------------------------------
-const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-
-// ---------------------------------------------------------------------------
-// Table names
-// ---------------------------------------------------------------------------
-const String kTableProfiles = 'profiles';
-const String kTableCategories = 'categories';
-const String kTableEquipment = 'equipment';
-const String kTableClients = 'clients';
-const String kTableRentals = 'rentals';
-const String kTableRentalItems = 'rental_items';
+const mcpBaseUrl = String.fromEnvironment(
+  'MCP_BASE_URL',
+  defaultValue: 'http://localhost:3001',
+);
+const mcpApiVersion = String.fromEnvironment(
+  'MCP_API_VERSION',
+  defaultValue: 'v1',
+);
+/// Optional — required as X-Api-Key for warehouse routes when MCP server sets MCP_API_KEY.
+const mcpApiKey = String.fromEnvironment('MCP_API_KEY');
 
 // ---------------------------------------------------------------------------
 // Equipment status values

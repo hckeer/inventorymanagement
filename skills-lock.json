@@ -1,6 +1,24 @@
 {
   "version": 1,
   "skills": {
+    "api-contract-testing": {
+      "source": "aj-geddes/useful-ai-prompts",
+      "sourceType": "github",
+      "skillPath": "skills/api-contract-testing/SKILL.md",
+      "computedHash": "15e2e8b75c60e6c1d5262fe20e13819ea5cb0d1875671daddf02b32ff6bf2d0d"
+    },
+    "bench-commands": {
+      "source": "unityappsuite/frappe-claude",
+      "sourceType": "github",
+      "skillPath": "plugins/frappe-fullstack/skills/bench-commands/SKILL.md",
+      "computedHash": "a2af71181c5ebf8c659a5c4d716abc96d55f992efccad36e6f6c3528797bd0b4"
+    },
+    "erpnext": {
+      "source": "membranedev/application-skills",
+      "sourceType": "github",
+      "skillPath": "skills/erpnext/SKILL.md",
+      "computedHash": "dd1cdb998cc0f12f6f0405abb801c6696406c9c74d54a545603beddee4cf203c"
+    },
     "flutter-apply-architecture-best-practices": {
       "source": "flutter/skills",
       "sourceType": "github",
@@ -13,11 +31,29 @@
       "skillPath": "skills/flutter-build-responsive-layout/SKILL.md",
       "computedHash": "f762ea2ee83d4f1f35d9093b41d2520dd024ab80c9539d4860b9ae7f2a4dc6a0"
     },
+    "flutter-networking": {
+      "source": "madteacher/mad-agents-skills",
+      "sourceType": "github",
+      "skillPath": "flutter-networking/SKILL.md",
+      "computedHash": "df6ed6a99b4704af5e184cf525ab2068383938b747871ae26424124ff6886e44"
+    },
     "flutter-setup-declarative-routing": {
       "source": "flutter/skills",
       "sourceType": "github",
       "skillPath": "skills/flutter-setup-declarative-routing/SKILL.md",
       "computedHash": "2341440c8bce0f176663695eaa71f9f7d7c967772a1dcd0d833c9778504b227e"
+    },
+    "frappe-app-development": {
+      "source": "lubusin/agent-skills",
+      "sourceType": "github",
+      "skillPath": "frappe-app-development/SKILL.md",
+      "computedHash": "8e0f63305112b02fd5b1adfe2e37132098c631aea9475651437f56b44eeb0df5"
+    },
+    "frappe-doctype-development": {
+      "source": "lubusin/agent-skills",
+      "sourceType": "github",
+      "skillPath": "frappe-doctype-development/SKILL.md",
+      "computedHash": "c5e4cb5274d1f7dd62ba1e8d31c2656dfc1ce82fbc9ac6e53577d76702497ed7"
     },
     "frontend-design": {
       "source": "anthropics/skills",

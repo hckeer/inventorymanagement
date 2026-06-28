@@ -10,9 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Supabase client + auth + realtime
-  supabase_flutter: 2.8.4
-
   # State management (manual providers, no codegen)
   flutter_riverpod: 2.6.1
 
@@ -27,6 +24,10 @@ dependencies:
 
   # Barcode and QR code scanning
   mobile_scanner: 5.2.3
+
+  # MCP HTTP client + secure token storage (U1+)
+  http: 1.2.2
+  flutter_secure_storage: 9.2.4
 
 dev_dependencies:
   flutter_test:

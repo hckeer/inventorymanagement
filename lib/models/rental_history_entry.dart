@@ -1,30 +1,5 @@
 /// A read-only typed projection of an equipment's rental history,
-/// assembled from a Supabase join query:
-///
-/// ```dart
-/// supabase
-///   .from('rental_items')
-///   .select('id, daily_rate_snapshot, damage_notes, '
-///           'rental:rentals(id, start_date, end_date, status, '
-///           '  client:clients(full_name))')
-///   .eq('equipment_id', equipmentId);
-/// ```
-///
-/// Supabase returns each row in the shape:
-/// ```json
-/// {
-///   "id": "...",
-///   "daily_rate_snapshot": 120.0,
-///   "damage_notes": null,
-///   "rental": {
-///     "id": "...",
-///     "start_date": "2026-06-01",
-///     "end_date": "2026-06-05",
-///     "status": "returned",
-///     "client": { "full_name": "Jane Doe" }
-///   }
-/// }
-/// ```
+/// assembled from MCP rental list queries filtered by item code.
 class RentalHistoryEntry {
   final String rentalItemId;
   final String rentalId;

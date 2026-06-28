@@ -32,7 +32,7 @@ class DashboardScreen extends ConsumerWidget {
         child: statsAsync.when(
           loading: () => const AppLoading(),
           error: (e, _) => AppError(
-            message: handleSupabaseError(e),
+            message: handleAppError(e),
             onRetry: () => ref.invalidate(dashboardStatsProvider),
           ),
           data: (stats) => CustomScrollView(

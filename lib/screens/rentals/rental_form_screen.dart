@@ -7,15 +7,14 @@ import '../../providers/client_provider.dart';
 import '../../providers/equipment_provider.dart';
 import '../../models/client.dart';
 import '../../models/equipment.dart';
-import '../../core/error_handler.dart';
-import '../../core/constants.dart';
+import '../../models/rental_line_input.dart';
 import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/app_error.dart';
 
 class RentalFormScreen extends ConsumerStatefulWidget {
   const RentalFormScreen({super.key, required this.rentalId});
-  final String? rentalId; // V1: always null (create only)
+  final String? rentalId;
 
   @override
   ConsumerState<RentalFormScreen> createState() => _RentalFormScreenState();
@@ -23,19 +22,19 @@ class RentalFormScreen extends ConsumerStatefulWidget {
 
 class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   Client? _selectedClient;
-  final List<Equipment> _selectedEquipment = [];
+  final List<RentalLineInput> _lines = [];
   DateTime _startDate = DateTime.now();
   DateTime _endDate = DateTime.now().add(const Duration(days: 1));
-  double _depositAmount = 0;
   bool _depositPaid = false;
   final _notesCtrl = TextEditingController();
   final _depositCtrl = TextEditingController(text: '0');
   bool _loading = false;
 
-  int get _rentalDays => _endDate.difference(_startDate).inDays.clamp(1, 9999);
+  int get _rentalDays =>
+      _endDate.difference(_startDate).inDays.clamp(1, 9999);
 
-  double get _estimatedTotal => _selectedEquipment.fold(
-      0, (sum, e) => sum + e.dailyRate * _rentalDays);
+  double get _estimatedTotal =>
+      _lines.fold(0, (sum, line) => sum + line.dailyRate * _rentalDays);
 
   @override
   void dispose() {
@@ -74,38 +73,269 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     });
   }
 
+  Future<void> _addSerializedLine(List<Equipment> serializedItems) async {
+    if (serializedItems.isEmpty) {
+      _showError('No serialized items available');
+      return;
+    }
+
+    Equipment? selectedItem;
+    String? selectedSerial;
+
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A24),
+            title: const Text(
+              'Add serialized line',
+              style: TextStyle(color: Color(0xFFEEEEF5)),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<Equipment>(
+                    value: selectedItem,
+                    decoration: const InputDecoration(labelText: 'Item'),
+                    dropdownColor: const Color(0xFF1A1A24),
+                    style: const TextStyle(color: Color(0xFFEEEEF5)),
+                    items: serializedItems
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(item.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (item) {
+                      setDialogState(() {
+                        selectedItem = item;
+                        selectedSerial = null;
+                      });
+                    },
+                  ),
+                  if (selectedItem != null) ...[
+                    const SizedBox(height: 12),
+                    FutureBuilder(
+                      future: ref
+                          .read(equipmentRepositoryProvider)
+                          .getDetail(id: selectedItem!.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState !=
+                            ConnectionState.done) {
+                          return const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          return Text(
+                            snapshot.error.toString(),
+                            style: const TextStyle(color: Color(0xFFFF5252)),
+                          );
+                        }
+                        final serials = snapshot.data?.serials ?? [];
+                        if (serials.isEmpty) {
+                          return const Text(
+                            'No serials for this item.',
+                            style: TextStyle(color: Color(0xFF9999AA)),
+                          );
+                        }
+                        return DropdownButtonFormField<String>(
+                          value: selectedSerial,
+                          decoration:
+                              const InputDecoration(labelText: 'Serial No'),
+                          dropdownColor: const Color(0xFF1A1A24),
+                          style: const TextStyle(color: Color(0xFFEEEEF5)),
+                          items: serials
+                              .map(
+                                (serial) => DropdownMenuItem(
+                                  value: serial.name,
+                                  child: Text(serial.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) =>
+                              setDialogState(() => selectedSerial = value),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: selectedItem != null &&
+                        selectedSerial != null &&
+                        selectedSerial!.isNotEmpty
+                    ? () => Navigator.pop(ctx, true)
+                    : null,
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (added == true && selectedItem != null && selectedSerial != null) {
+      setState(() {
+        _lines.add(
+          RentalLineInput(
+            lineType: 'serialized',
+            itemCode: selectedItem!.id,
+            itemName: selectedItem!.name,
+            serialNo: selectedSerial,
+            qty: 1,
+            dailyRate: selectedItem!.dailyRate,
+          ),
+        );
+      });
+    }
+  }
+
+  Future<void> _addQtyLine(List<Equipment> qtyItems) async {
+    if (qtyItems.isEmpty) {
+      _showError('No qty items available');
+      return;
+    }
+
+    Equipment? selectedItem;
+    double qty = 1;
+
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A24),
+            title: const Text(
+              'Add qty line',
+              style: TextStyle(color: Color(0xFFEEEEF5)),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<Equipment>(
+                  value: selectedItem,
+                  decoration: const InputDecoration(labelText: 'Item'),
+                  dropdownColor: const Color(0xFF1A1A24),
+                  style: const TextStyle(color: Color(0xFFEEEEF5)),
+                  items: qtyItems
+                      .map(
+                        (item) => DropdownMenuItem(
+                          value: item,
+                          child: Text(item.name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (item) => setDialogState(() => selectedItem = item),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('Qty',
+                        style: TextStyle(color: Color(0xFF9999AA))),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      color: const Color(0xFF9999AA),
+                      onPressed: qty > 1
+                          ? () => setDialogState(() => qty -= 1)
+                          : null,
+                    ),
+                    Text(
+                      qty.toStringAsFixed(0),
+                      style: const TextStyle(
+                        color: Color(0xFFEEEEF5),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      color: const Color(0xFFE8A838),
+                      onPressed: () => setDialogState(() => qty += 1),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: selectedItem != null
+                    ? () => Navigator.pop(ctx, true)
+                    : null,
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (added == true && selectedItem != null) {
+      setState(() {
+        _lines.add(
+          RentalLineInput(
+            lineType: 'qty',
+            itemCode: selectedItem!.id,
+            itemName: selectedItem!.name,
+            qty: qty,
+            dailyRate: selectedItem!.dailyRate,
+          ),
+        );
+      });
+    }
+  }
+
   Future<void> _submit() async {
     if (_selectedClient == null) {
       _showError('Select a client');
       return;
     }
-    if (_selectedEquipment.isEmpty) {
-      _showError('Select at least one equipment item');
+    if (_lines.isEmpty) {
+      _showError('Add at least one rental line');
       return;
     }
-    if (!_endDate.isAfter(_startDate) && _endDate != _startDate) {
+    if (_endDate.isBefore(_startDate)) {
       _showError('End date must be on or after start date');
       return;
     }
 
     setState(() => _loading = true);
     try {
-      final rentalId = await ref.read(rentalListProvider.notifier).createViaRpc(
-            clientId: _selectedClient!.id,
-            startDate: _startDate,
-            endDate: _endDate,
-            equipmentIds: _selectedEquipment.map((e) => e.id).toList(),
-            depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
-            depositPaid: _depositPaid,
-            notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          );
+      final rentalId =
+          await ref.read(rentalListProvider.notifier).createAndSubmit(
+                clientId: _selectedClient!.id,
+                startDate: _startDate,
+                endDate: _endDate,
+                lines: _lines,
+                depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
+                depositPaid: _depositPaid,
+                notes: _notesCtrl.text.trim().isEmpty
+                    ? null
+                    : _notesCtrl.text.trim(),
+              );
 
-      // Invalidate equipment list so status updates are reflected
       ref.invalidate(equipmentListProvider);
 
       if (mounted) context.go('/rentals/$rentalId');
     } catch (e) {
-      if (mounted) _showError(handleSupabaseError(e));
+      if (mounted) {
+        _showError(e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -135,19 +365,23 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
       body: clientsAsync.when(
         loading: () => const AppLoading(),
-        error: (e, _) => AppError(message: handleSupabaseError(e)),
+        error: (e, _) => AppError(
+          message: e.toString().replaceFirst('Exception: ', ''),
+        ),
         data: (clients) => equipmentAsync.when(
           loading: () => const AppLoading(),
-          error: (e, _) => AppError(message: handleSupabaseError(e)),
+          error: (e, _) => AppError(
+            message: e.toString().replaceFirst('Exception: ', ''),
+          ),
           data: (allEquipment) {
-            final availableEquipment = allEquipment
-                .where((e) => e.status == kStatusAvailable)
-                .toList();
+            final serializedItems =
+                allEquipment.where((e) => e.hasSerialNo).toList();
+            final qtyItems =
+                allEquipment.where((e) => !e.hasSerialNo).toList();
 
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // ── Step 1: Client ───────────────────────────────────────
                 _StepHeader(number: '1', title: 'Select client'),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<Client>(
@@ -156,107 +390,102 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   dropdownColor: const Color(0xFF1A1A24),
                   style: const TextStyle(color: Color(0xFFEEEEF5)),
                   items: clients
-                      .map((c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(c.fullName),
-                          ))
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(c.fullName),
+                        ),
+                      )
                       .toList(),
                   onChanged: (c) => setState(() => _selectedClient = c),
                 ),
-
                 const SizedBox(height: 24),
-
-                // ── Step 2: Equipment ────────────────────────────────────
-                _StepHeader(number: '2', title: 'Select equipment'),
-                const SizedBox(height: 4),
-                Text(
-                  '${availableEquipment.length} items available',
-                  style: const TextStyle(
-                      color: Color(0xFF9999AA), fontSize: 12),
+                _StepHeader(number: '2', title: 'Rental lines'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _addSerializedLine(serializedItems),
+                        icon: const Icon(Icons.qr_code, size: 18),
+                        label: const Text('Serial line'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _addQtyLine(qtyItems),
+                        icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                        label: const Text('Qty line'),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
-
-                if (availableEquipment.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'No equipment available for rental.',
-                      style: TextStyle(color: Color(0xFF9999AA)),
-                    ),
+                if (_lines.isEmpty)
+                  const Text(
+                    'Add serialized equipment (barcode) or qty items (sandbags, etc.).',
+                    style: TextStyle(color: Color(0xFF9999AA), fontSize: 13),
                   )
                 else
-                  ...availableEquipment.map((equip) {
-                    final selected = _selectedEquipment.contains(equip);
+                  ..._lines.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final line = entry.value;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: GestureDetector(
-                        onTap: () => setState(() {
-                          if (selected) {
-                            _selectedEquipment.remove(equip);
-                          } else {
-                            _selectedEquipment.add(equip);
-                          }
-                        }),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? const Color(0xFFE8A838).withValues(alpha: 0.08)
-                                : const Color(0xFF1A1A24),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: selected
-                                  ? const Color(0xFFE8A838)
-                                  : const Color(0xFF252533),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A24),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF252533)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    line.itemName,
+                                    style: const TextStyle(
+                                      color: Color(0xFFEEEEF5),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Text(
+                                    line.lineType == 'serialized'
+                                        ? 'Serial: ${line.serialNo}'
+                                        : 'Qty: ${line.qty.toStringAsFixed(0)}',
+                                    style: const TextStyle(
+                                      color: Color(0xFF9999AA),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${line.dailyRate.toCurrency()}/day',
+                                    style: const TextStyle(
+                                      color: Color(0xFFE8A838),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                selected
-                                    ? Icons.check_box_rounded
-                                    : Icons.check_box_outline_blank_rounded,
-                                color: selected
-                                    ? const Color(0xFFE8A838)
-                                    : const Color(0xFF9999AA),
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      equip.name,
-                                      style: const TextStyle(
-                                          color: Color(0xFFEEEEF5),
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 14),
-                                    ),
-                                    Text(
-                                      equip.dailyRate.toCurrency() + '/day',
-                                      style: const TextStyle(
-                                          color: Color(0xFF9999AA),
-                                          fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded,
+                                  color: Color(0xFF9999AA)),
+                              onPressed: () =>
+                                  setState(() => _lines.removeAt(index)),
+                            ),
+                          ],
                         ),
                       ),
                     );
                   }),
-
                 const SizedBox(height: 24),
-
-                // ── Step 3: Dates ────────────────────────────────────────
-                _StepHeader(number: '3', title: 'Set dates & deposit'),
+                _StepHeader(number: '3', title: 'Dates & deposit'),
                 const SizedBox(height: 12),
-
                 Row(
                   children: [
                     Expanded(
@@ -277,27 +506,30 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-
                 Row(
                   children: [
                     Expanded(
                       child: TextFormField(
                         controller: _depositCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
+                          decimal: true,
+                        ),
                         style: const TextStyle(color: Color(0xFFEEEEF5)),
-                        decoration:
-                            const InputDecoration(labelText: 'Deposit amount'),
-                        onChanged: (v) =>
-                            setState(() => _depositAmount = double.tryParse(v) ?? 0),
+                        decoration: const InputDecoration(
+                          labelText: 'Deposit amount',
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Column(
                       children: [
-                        const Text('Paid',
-                            style: TextStyle(
-                                color: Color(0xFF9999AA), fontSize: 12)),
+                        const Text(
+                          'Paid',
+                          style: TextStyle(
+                            color: Color(0xFF9999AA),
+                            fontSize: 12,
+                          ),
+                        ),
                         Switch(
                           value: _depositPaid,
                           activeColor: const Color(0xFFE8A838),
@@ -312,12 +544,11 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   controller: _notesCtrl,
                   maxLines: 2,
                   style: const TextStyle(color: Color(0xFFEEEEF5)),
-                  decoration:
-                      const InputDecoration(labelText: 'Notes (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
                 ),
-
-                // ── Summary ──────────────────────────────────────────────
-                if (_selectedEquipment.isNotEmpty) ...[
+                if (_lines.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -325,24 +556,29 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                       color: const Color(0xFFE8A838).withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: const Color(0xFFE8A838).withValues(alpha: 0.3)),
+                        color: const Color(0xFFE8A838).withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       children: [
                         _SummaryRow(
-                            label: 'Duration',
-                            value: '$_rentalDays day${_rentalDays == 1 ? '' : 's'}'),
+                          label: 'Duration',
+                          value:
+                              '$_rentalDays day${_rentalDays == 1 ? '' : 's'}',
+                        ),
                         _SummaryRow(
-                            label: 'Items', value: '${_selectedEquipment.length}'),
+                          label: 'Lines',
+                          value: '${_lines.length}',
+                        ),
                         _SummaryRow(
-                            label: 'Est. total',
-                            value: _estimatedTotal.toCurrency(),
-                            highlight: true),
+                          label: 'Est. total',
+                          value: _estimatedTotal.toCurrency(),
+                          highlight: true,
+                        ),
                       ],
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 32),
                 SizedBox(
                   width: double.infinity,
@@ -387,20 +623,24 @@ class _StepHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(6),
           ),
           child: Center(
-            child: Text(number,
-                style: const TextStyle(
-                    color: Color(0xFF0F0F13),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700)),
+            child: Text(
+              number,
+              style: const TextStyle(
+                color: Color(0xFF0F0F13),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 10),
         Text(
           title,
           style: const TextStyle(
-              color: Color(0xFFEEEEF5),
-              fontWeight: FontWeight.w600,
-              fontSize: 15),
+            color: Color(0xFFEEEEF5),
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
         ),
       ],
     );
@@ -408,8 +648,11 @@ class _StepHeader extends StatelessWidget {
 }
 
 class _DateButton extends StatelessWidget {
-  const _DateButton(
-      {required this.label, required this.date, required this.onTap});
+  const _DateButton({
+    required this.label,
+    required this.date,
+    required this.onTap,
+  });
   final String label;
   final String date;
   final VoidCallback onTap;
@@ -428,20 +671,27 @@ class _DateButton extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: const TextStyle(
-                    color: Color(0xFF9999AA), fontSize: 11)),
+            Text(
+              label,
+              style: const TextStyle(color: Color(0xFF9999AA), fontSize: 11),
+            ),
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.calendar_today_rounded,
-                    color: Color(0xFFE8A838), size: 14),
+                const Icon(
+                  Icons.calendar_today_rounded,
+                  color: Color(0xFFE8A838),
+                  size: 14,
+                ),
                 const SizedBox(width: 6),
-                Text(date,
-                    style: const TextStyle(
-                        color: Color(0xFFEEEEF5),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13)),
+                Text(
+                  date,
+                  style: const TextStyle(
+                    color: Color(0xFFEEEEF5),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
           ],
@@ -452,8 +702,11 @@ class _DateButton extends StatelessWidget {
 }
 
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow(
-      {required this.label, required this.value, this.highlight = false});
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
   final String label;
   final String value;
   final bool highlight;
@@ -465,17 +718,20 @@ class _SummaryRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  color: Color(0xFF9999AA), fontSize: 13)),
-          Text(value,
-              style: TextStyle(
-                  color: highlight
-                      ? const Color(0xFFE8A838)
-                      : const Color(0xFFEEEEF5),
-                  fontWeight:
-                      highlight ? FontWeight.w700 : FontWeight.w500,
-                  fontSize: highlight ? 15 : 13)),
+          Text(
+            label,
+            style: const TextStyle(color: Color(0xFF9999AA), fontSize: 13),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: highlight
+                  ? const Color(0xFFE8A838)
+                  : const Color(0xFFEEEEF5),
+              fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+              fontSize: highlight ? 15 : 13,
+            ),
+          ),
         ],
       ),
     );

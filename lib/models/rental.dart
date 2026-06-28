@@ -1,3 +1,5 @@
+import '../core/constants.dart';
+
 class Rental {
   final String id;
   final String clientId;
@@ -49,6 +51,38 @@ class Rental {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
+  }
+
+  factory Rental.fromErpNext(Map<String, dynamic> json) {
+    final now = DateTime.now();
+    return Rental(
+      id: json['name'] as String,
+      clientId: json['customer'] as String,
+      createdBy: json['created_by'] as String? ?? '',
+      startDate: DateTime.parse(json['start_date'] as String),
+      endDate: DateTime.parse(json['end_date'] as String),
+      status: _mapErpStatus(json['status'] as String?),
+      depositAmount: (json['deposit_amount'] as num?)?.toDouble() ?? 0,
+      depositPaid: (json['deposit_paid'] as num?) == 1,
+      notes: json['notes'] as String?,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  static String _mapErpStatus(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'active':
+        return kRentalStatusActive;
+      case 'returned':
+        return kRentalStatusReturned;
+      case 'overdue':
+        return kRentalStatusOverdue;
+      case 'cancelled':
+        return kRentalStatusCancelled;
+      default:
+        return status?.toLowerCase() ?? kRentalStatusActive;
+    }
   }
 
   Map<String, dynamic> toJson() {

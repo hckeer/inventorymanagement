@@ -1,15 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/supabase_client.dart';
-import '../core/constants.dart';
 
-/// Aggregated dashboard statistics fetched in a single parallel request batch.
+import '../core/mcp_client.dart';
+import '../core/error_handler.dart';
+
 class DashboardStats {
   final int activeRentals;
   final int overdueRentals;
   final int availableEquipment;
-
-  /// Sum of daily_rate_snapshot * rental_days for rentals starting today.
-  /// V1 placeholder — revenue dashboard is V2.
   final double todayRevenue;
 
   const DashboardStats({
@@ -22,29 +19,14 @@ class DashboardStats {
 
 final dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
   try {
-    // Run all 3 count queries in parallel.
-    final results = await Future.wait([
-      supabase
-          .from(kTableRentals)
-          .select('id')
-          .eq('status', kRentalStatusActive),
-      supabase
-          .from(kTableRentals)
-          .select('id')
-          .eq('status', kRentalStatusOverdue),
-      supabase
-          .from(kTableEquipment)
-          .select('id')
-          .eq('status', kStatusAvailable),
-    ]);
-
+    final data = await mcpClient.get('/dashboard/stats');
     return DashboardStats(
-      activeRentals: (results[0] as List).length,
-      overdueRentals: (results[1] as List).length,
-      availableEquipment: (results[2] as List).length,
-      todayRevenue: 0, // V1: placeholder — revenue dashboard is V2
+      activeRentals: (data['active_rentals'] as num?)?.toInt() ?? 0,
+      overdueRentals: (data['overdue_rentals'] as num?)?.toInt() ?? 0,
+      availableEquipment: (data['available_serialized'] as num?)?.toInt() ?? 0,
+      todayRevenue: 0,
     );
-  } catch (e, st) {
-    Error.throwWithStackTrace(e, st);
+  } on McpApiException catch (e) {
+    throw Exception(humanizeError(e.message));
   }
 });

@@ -63,7 +63,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(handleSupabaseError(e)),
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
             backgroundColor: const Color(0xFFFF5252),
           ),
         );

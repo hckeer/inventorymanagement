@@ -1,62 +1,78 @@
-# Film Equipment Rental — Run Commands
-# Usage: make run | make schema | make build-android
+# Film Equipment Rental — local dev (MCP + ERPNext)
+# Phone must use LAN IP for MCP — not localhost.
 
-# Supabase credentials (compile-time constants via --dart-define)
-SUPABASE_URL := https://mtusxullmgsjxhpsnhwy.supabase.co
-SUPABASE_ANON_KEY := sb_publishable__CyWJEN4gcBn2pVBDlTEAg_p94GSczW
+FLUTTER := /home/hckeer/flutter/bin/flutter
+ADB := $(HOME)/Android/platform-tools/adb
+LAN_IP := $(shell hostname -I | awk '{print $$1}')
+MCP_URL := http://$(LAN_IP):3001
 
-.PHONY: run build-android schema clean
+.PHONY: run run-phone build-android install analyze test deps clean devices mcp health stack-up
 
-## Run on connected Android device (physical phone)
+## Run on connected device (uses this machine's LAN IP for MCP)
 run:
-	flutter run \
-		--dart-define=SUPABASE_URL=$(SUPABASE_URL) \
-		--dart-define=SUPABASE_ANON_KEY=$(SUPABASE_ANON_KEY)
+	$(FLUTTER) run \
+		--dart-define=MCP_BASE_URL=$(MCP_URL) \
+		--dart-define=MCP_API_VERSION=v1
 
-## Build APK for physical Android testing
+## Same as run — explicit name for physical Android
+run-phone: run
+
+## Build debug APK with LAN MCP URL baked in
 build-android:
-	flutter build apk \
-		--dart-define=SUPABASE_URL=$(SUPABASE_URL) \
-		--dart-define=SUPABASE_ANON_KEY=$(SUPABASE_ANON_KEY) \
-		--release
+	$(FLUTTER) build apk \
+		--dart-define=MCP_BASE_URL=$(MCP_URL) \
+		--dart-define=MCP_API_VERSION=v1
 
-## Install APK on connected device
-install:
-	flutter install \
-		--dart-define=SUPABASE_URL=$(SUPABASE_URL) \
-		--dart-define=SUPABASE_ANON_KEY=$(SUPABASE_ANON_KEY)
+install: run
 
-## Run with verbose output for debugging
 run-verbose:
-	flutter run -v \
-		--dart-define=SUPABASE_URL=$(SUPABASE_URL) \
-		--dart-define=SUPABASE_ANON_KEY=$(SUPABASE_ANON_KEY)
+	$(FLUTTER) run -v \
+		--dart-define=MCP_BASE_URL=$(MCP_URL) \
+		--dart-define=MCP_API_VERSION=v1
 
-## Check app for issues without running
 analyze:
-	flutter analyze
+	$(FLUTTER) analyze
 
-## Run tests
 test:
-	flutter test
+	$(FLUTTER) test
 
-## Get dependencies
 deps:
-	flutter pub get
+	$(FLUTTER) pub get
 
-## Clean build artifacts
 clean:
-	flutter clean && flutter pub get
+	$(FLUTTER) clean && $(FLUTTER) pub get
 
-## Print connected devices
 devices:
-	flutter devices
+	$(FLUTTER) devices
 
-## NOTE: schema target — apply this SQL to your Supabase project
-## Go to: https://supabase.com/dashboard/project/mtusxullmgsjxhpsnhwy/sql/new
-## Paste contents of: supabase/schema.sql
-schema:
-	@echo "Apply schema manually:"
-	@echo "1. Open https://supabase.com/dashboard/project/mtusxullmgsjxhpsnhwy/sql/new"
-	@echo "2. Paste the contents of supabase/schema.sql"
-	@echo "3. Click Run"
+## Start MCP server (foreground)
+mcp:
+	cd mcp-server && npm run dev
+
+## Quick health check
+health:
+	@curl -sf http://localhost:8080/api/method/ping >/dev/null && echo "ERPNext OK" || echo "ERPNext DOWN"
+	@curl -sf http://localhost:3001/health >/dev/null && echo "MCP OK ($(MCP_URL))" || echo "MCP DOWN"
+
+## Start ERPNext docker stack
+stack-up:
+	cd /home/hckeer/work/erpnest/frappe_docker && \
+		docker compose -f pwd.yml up -d db redis-cache redis-queue backend frontend websocket queue-short queue-long scheduler
+
+## Wireless ADB (requires ~/Android/platform-tools — make adb-install once)
+adb-install:
+	curl -fsSL -o /tmp/platform-tools.zip https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+	unzip -qo /tmp/platform-tools.zip -d $(HOME)/Android
+	@echo "Installed: $(HOME)/Android/platform-tools/adb"
+
+adb-pair:
+	@test -n "$(PAIR_CODE)" || (echo "Usage: make adb-pair PAIR_CODE=123456 [PAIR_PORT=44455]"; exit 1)
+	$(ADB) pair 192.168.1.64:$(or $(PAIR_PORT),44455) $(PAIR_CODE)
+
+adb-connect:
+	$(ADB) connect 192.168.1.64:$(or $(CONNECT_PORT),38521)
+	$(ADB) devices -l
+
+adb-devices:
+	$(ADB) devices -l
+	$(FLUTTER) devices

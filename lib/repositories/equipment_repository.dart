@@ -1,97 +1,207 @@
-import '../core/supabase_client.dart';
-import '../core/constants.dart';
+import '../core/mcp_client.dart';
+import '../core/error_handler.dart';
 import '../models/equipment.dart';
+import '../models/equipment_detail.dart';
 import '../models/rental_history_entry.dart';
 
 class EquipmentRepository {
-  /// Returns all equipment, optionally filtered by categoryId and/or status,
-  /// ordered by name ascending.
   Future<List<Equipment>> getAll({
     String? categoryId,
     String? status,
   }) async {
-    var query = supabase.from(kTableEquipment).select();
+    try {
+      var path = '/items';
+      final query = <String>[];
+      if (categoryId != null && categoryId.isNotEmpty) {
+        query.add('group=${Uri.encodeComponent(categoryId)}');
+      }
+      if (query.isNotEmpty) {
+        path = '$path?${query.join('&')}';
+      }
 
-    if (categoryId != null && categoryId.isNotEmpty) {
-      query = query.eq('category_id', categoryId);
-    }
-    if (status != null && status.isNotEmpty) {
-      query = query.eq('status', status);
-    }
+      final data = await mcpClient.get(path);
+      final items = (data['items'] as List<dynamic>? ?? [])
+          .map((e) => Equipment.fromErpNextItem(e as Map<String, dynamic>))
+          .toList();
 
-    final data = await query.order('name', ascending: true);
-    return List<Equipment>.from(
-      (data as List).map((e) => Equipment.fromJson(e as Map<String, dynamic>)),
-    );
+      if (status != null && status.isNotEmpty) {
+        return items.where((item) => item.status == status).toList();
+      }
+      return items;
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Returns a single equipment record by id. Throws if not found.
   Future<Equipment> getById({required String id}) async {
-    final data = await supabase
-        .from(kTableEquipment)
-        .select()
-        .eq('id', id)
-        .maybeSingle();
-    if (data == null) {
-      throw Exception('Equipment with id "$id" not found.');
+    final detail = await getDetail(id: id);
+    return detail.equipment;
+  }
+
+  Future<EquipmentDetail> getDetail({required String id}) async {
+    try {
+      final data = await mcpClient.get('/items/${Uri.encodeComponent(id)}');
+      final item = data['item'] as Map<String, dynamic>?;
+      if (item == null) {
+        throw Exception('Equipment with id "$id" not found.');
+      }
+
+      final serialMaps = (data['serials'] as List<dynamic>? ?? [])
+          .map((e) => e as Map<String, dynamic>)
+          .toList();
+      final serials = serialMaps
+          .map(EquipmentSerial.fromJson)
+          .toList();
+
+      final equipment = Equipment(
+        id: item['name'] as String,
+        name: item['item_name'] as String? ?? item['name'] as String,
+        categoryId: item['item_group'] as String? ?? '',
+        status: Equipment.deriveItemStatus(item: item, serials: serialMaps),
+        dailyRate: (item['standard_rate'] as num?)?.toDouble() ?? 0,
+        hasSerialNo: (item['has_serial_no'] as num? ?? 1) == 1,
+        serialNo: serials.length == 1 ? serials.first.name : null,
+        notes: null,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      return EquipmentDetail(
+        equipment: equipment,
+        serials: serials,
+        qtyOnHand: (data['qty_on_hand'] as num?)?.toDouble() ?? 0,
+        rentalWarehouse: data['rental_warehouse'] as String? ?? '',
+      );
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
     }
-    return Equipment.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Inserts a new equipment record (omits id, created_at, updated_at) and
-  /// returns the created row.
-  Future<Equipment> create({required Equipment equipment}) async {
-    final payload = equipment.toJson()
-      ..remove('id')
-      ..remove('created_at')
-      ..remove('updated_at');
+  Future<Equipment> create({required Equipment equipment, String? serialNo}) async {
+    try {
+      final body = <String, dynamic>{
+        'item_name': equipment.name,
+        'item_group': equipment.categoryId,
+        'standard_rate': equipment.dailyRate,
+        'has_serial_no': serialNo != null && serialNo.isNotEmpty,
+      };
+      if (serialNo != null && serialNo.isNotEmpty) {
+        body['serial_no'] = serialNo;
+      }
 
-    final data = await supabase
-        .from(kTableEquipment)
-        .insert(payload)
-        .select()
-        .single();
-    return Equipment.fromJson(data as Map<String, dynamic>);
+      final data = await mcpClient.post('/items', body: body);
+      final item = data['item'] as Map<String, dynamic>?;
+      if (item == null) {
+        throw Exception('Item create did not return item data.');
+      }
+      return Equipment.fromErpNextItem(item);
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Updates an existing equipment record by id and returns the updated row.
-  Future<Equipment> update({required Equipment equipment}) async {
-    final payload = equipment.toJson()
-      ..remove('id')
-      ..remove('created_at')
-      ..remove('updated_at');
+  Future<Equipment> update({
+    required Equipment equipment,
+    String? newSerialNo,
+  }) async {
+    try {
+      final data = await mcpClient.patch(
+        '/items/${Uri.encodeComponent(equipment.id)}',
+        body: {
+          'item_name': equipment.name,
+          'item_group': equipment.categoryId,
+          'standard_rate': equipment.dailyRate,
+        },
+      );
+      final item = data['item'] as Map<String, dynamic>?;
+      if (item == null) {
+        throw Exception('Item update did not return item data.');
+      }
 
-    final data = await supabase
-        .from(kTableEquipment)
-        .update(payload)
-        .eq('id', equipment.id)
-        .select()
-        .single();
-    return Equipment.fromJson(data as Map<String, dynamic>);
+      if (newSerialNo != null && newSerialNo.isNotEmpty) {
+        await mcpClient.post(
+          '/serials',
+          body: {
+            'serial_no': newSerialNo,
+            'item_code': equipment.id,
+          },
+        );
+      }
+
+      return Equipment.fromErpNextItem(item);
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Deletes the equipment record with the given id.
   Future<void> delete({required String id}) async {
-    await supabase.from(kTableEquipment).delete().eq('id', id);
+    try {
+      await mcpClient.patch(
+        '/items/${Uri.encodeComponent(id)}',
+        body: {'disabled': 1},
+      );
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Returns the rental history for a specific equipment item, ordered by
-  /// created_at descending.
+  /// Rental history via MCP rentals — U3 will enrich per serial line.
   Future<List<RentalHistoryEntry>> getRentalHistory({
     required String equipmentId,
   }) async {
-    final data = await supabase
-        .from(kTableRentalItems)
-        .select(
-          'id, daily_rate_snapshot, damage_notes, '
-          'rental:rentals(id, start_date, end_date, status, client:clients(full_name))',
-        )
-        .eq('equipment_id', equipmentId)
-        .order('created_at', ascending: false);
+    try {
+      final data = await mcpClient.get('/rentals');
+      final rentals = data['rentals'] as List<dynamic>? ?? [];
+      final entries = <RentalHistoryEntry>[];
 
-    return List<RentalHistoryEntry>.from(
-      (data as List)
-          .map((e) => RentalHistoryEntry.fromJson(e as Map<String, dynamic>)),
-    );
+      for (final rentalSummary in rentals) {
+        final summary = rentalSummary as Map<String, dynamic>;
+        final rentalName = summary['name'] as String;
+        final detailData =
+            await mcpClient.get('/rentals/${Uri.encodeComponent(rentalName)}');
+        final rental = detailData['rental'] as Map<String, dynamic>?;
+        if (rental == null) {
+          continue;
+        }
+
+        final lines = rental['items'] as List<dynamic>? ?? [];
+        for (final line in lines) {
+          final row = line as Map<String, dynamic>;
+          final itemCode = row['item_code'] as String?;
+          final serialNo = row['serial_no'] as String?;
+          if (itemCode != equipmentId && serialNo != equipmentId) {
+            continue;
+          }
+
+          entries.add(
+            RentalHistoryEntry(
+              rentalItemId: '${rentalName}-${row['idx'] ?? entries.length}',
+              rentalId: rentalName,
+              clientName: rental['customer'] as String? ?? 'Unknown',
+              startDate: DateTime.parse(rental['start_date'] as String),
+              endDate: DateTime.parse(rental['end_date'] as String),
+              rentalStatus: _mapRentalStatus(rental['status'] as String?),
+              dailyRateSnapshot:
+                  (row['daily_rate_snapshot'] as num?)?.toDouble() ?? 0,
+            ),
+          );
+        }
+      }
+
+      entries.sort((a, b) => b.startDate.compareTo(a.startDate));
+      return entries;
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
+  String _mapRentalStatus(String? status) {
+    return switch (status) {
+      'Active' => 'active',
+      'Overdue' => 'overdue',
+      'Returned' => 'returned',
+      'Cancelled' => 'cancelled',
+      _ => 'active',
+    };
   }
 }

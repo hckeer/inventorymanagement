@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -15,6 +14,7 @@ import 'screens/clients/client_form_screen.dart';
 import 'screens/rentals/rental_list_screen.dart';
 import 'screens/rentals/rental_detail_screen.dart';
 import 'screens/rentals/rental_form_screen.dart';
+import 'screens/warehouse/warehouse_screen.dart';
 import 'screens/equipment/scanner_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -29,13 +29,17 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/dashboard',
     refreshListenable: authNotifier,
     redirect: (context, state) {
-      final isAuthenticated =
-          Supabase.instance.client.auth.currentSession != null;
-      final isOnLogin = state.matchedLocation == '/login';
-
-      if (!isAuthenticated && !isOnLogin) return '/login';
-      if (isAuthenticated && isOnLogin) return '/dashboard';
-      return null;
+      final authAsync = ref.read(authStateProvider);
+      return authAsync.when(
+        data: (isAuthenticated) {
+          final isOnLogin = state.matchedLocation == '/login';
+          if (!isAuthenticated && !isOnLogin) return '/login';
+          if (isAuthenticated && isOnLogin) return '/dashboard';
+          return null;
+        },
+        loading: () => null,
+        error: (_, __) => '/login',
+      );
     },
     routes: [
       // ── Auth ──────────────────────────────────────────────────────────────
@@ -112,6 +116,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
+          // Warehouse
+          GoRoute(
+            path: '/warehouse',
+            builder: (context, state) => const WarehouseScreen(),
+          ),
+
           // Rentals
           GoRoute(
             path: '/rentals',
@@ -150,7 +160,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 class _AuthNotifier extends ChangeNotifier {
   _AuthNotifier(this._ref) {
-    _ref.listen<AsyncValue<AuthState>>(authStateProvider, (_, __) {
+    _ref.listen<AsyncValue<bool>>(authStateProvider, (_, __) {
       notifyListeners();
     });
   }
@@ -170,6 +180,7 @@ class _AppShell extends StatelessWidget {
     (icon: Icons.videocam_outlined, activeIcon: Icons.videocam_rounded, label: 'Equipment', path: '/equipment'),
     (icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Clients', path: '/clients'),
     (icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long_rounded, label: 'Rentals', path: '/rentals'),
+    (icon: Icons.warehouse_outlined, activeIcon: Icons.warehouse_rounded, label: 'Warehouse', path: '/warehouse'),
   ];
 
   int _selectedIndex(BuildContext context) {

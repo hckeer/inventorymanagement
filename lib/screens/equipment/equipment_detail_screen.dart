@@ -32,13 +32,13 @@ class EquipmentDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final asyncEquipment = ref.watch(equipmentDetailProvider(id));
+    final asyncDetail = ref.watch(equipmentDetailFullProvider(id));
     final asyncCategories = ref.watch(categoryListProvider);
     final asyncHistory = ref.watch(rentalHistoryProvider(id));
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
-      body: asyncEquipment.when(
+      body: asyncDetail.when(
         loading: () => const Scaffold(
           backgroundColor: Color(0xFF0F0F13),
           body: AppLoading(),
@@ -52,10 +52,11 @@ class EquipmentDetailScreen extends ConsumerWidget {
           ),
           body: AppError(
             message: e.toString(),
-            onRetry: () => ref.invalidate(equipmentDetailProvider(id)),
+            onRetry: () => ref.invalidate(equipmentDetailFullProvider(id)),
           ),
         ),
-        data: (equipment) {
+        data: (detail) {
+          final equipment = detail.equipment;
           final categoryName = asyncCategories.whenOrNull(
                 data: (cats) {
                   final match = cats.where(
@@ -159,6 +160,84 @@ class EquipmentDetailScreen extends ConsumerWidget {
                           ),
                         ],
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Inventory (hybrid) ───────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A24),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Inventory',
+                        style: TextStyle(
+                          color: Color(0xFFEEEEF5),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _DetailRow(
+                        icon: Icons.warehouse_outlined,
+                        label: 'Qty on hand (${detail.rentalWarehouse})',
+                        value: detail.qtyOnHand.toStringAsFixed(
+                          detail.qtyOnHand.truncateToDouble() == detail.qtyOnHand
+                              ? 0
+                              : 1,
+                        ),
+                      ),
+                      if (detail.serials.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Serial numbers (${detail.serials.length})',
+                          style: const TextStyle(
+                            color: Color(0xFF9999AA),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...detail.serials.map(
+                          (serial) => Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF252533),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    serial.name,
+                                    style: const TextStyle(
+                                      color: Color(0xFFEEEEF5),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                if (serial.warehouse != null)
+                                  Text(
+                                    serial.warehouse!,
+                                    style: const TextStyle(
+                                      color: Color(0xFF9999AA),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -77,7 +77,7 @@ class _RentalListScreenState extends ConsumerState<RentalListScreen> {
             child: rentalsAsync.when(
               loading: () => const AppLoading(),
               error: (e, _) => AppError(
-                message: handleSupabaseError(e),
+                message: handleAppError(e),
                 onRetry: () => ref.invalidate(rentalListProvider),
               ),
               data: (rentals) {

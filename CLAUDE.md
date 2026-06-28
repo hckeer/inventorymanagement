@@ -93,20 +93,16 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Use `??` and `?.` operators consistently
 - Nullable fields are `String?`, never initialized to `''` as a null stand-in
 
-### Secrets — `--dart-define` (compile-time constants)
+### Run (MCP-only)
 ```bash
 flutter run \
-  --dart-define=SUPABASE_URL=https://mtusxullmgsjxhpsnhwy.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=sb_publishable__CyWJEN4gcBn2pVBDlTEAg_p94GSczW
-```
-```dart
-// In core/constants.dart — compile-time, zero runtime overhead:
-const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  --dart-define=MCP_BASE_URL=http://localhost:3001 \
+  --dart-define=MCP_API_VERSION=v1 \
+  --dart-define=MCP_API_KEY=your-key   # optional — warehouse routes when server requires it
 ```
 
 ### Error handling
-- All Supabase calls go through `error_handler.dart` → human-readable string
+- All MCP calls go through `error_handler.dart` → human-readable string
 - Never `catch (e) { print(e); }` in production code
 - Never swallow errors silently
 

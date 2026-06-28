@@ -1,29 +1,42 @@
-import '../core/supabase_client.dart';
-import '../core/constants.dart';
+import '../core/mcp_client.dart';
+import '../core/error_handler.dart';
 import '../models/rental_item.dart';
 
 class RentalItemRepository {
-  /// Returns all rental items for a given rental, ordered by created_at
-  /// ascending.
   Future<List<RentalItem>> getByRental({required String rentalId}) async {
-    final data = await supabase
-        .from(kTableRentalItems)
-        .select()
-        .eq('rental_id', rentalId)
-        .order('created_at', ascending: true);
-    return List<RentalItem>.from(
-      (data as List).map((e) => RentalItem.fromJson(e as Map<String, dynamic>)),
-    );
+    try {
+      final data = await mcpClient.get('/rentals/${Uri.encodeComponent(rentalId)}');
+      final rental = data['rental'] as Map<String, dynamic>?;
+      if (rental == null) {
+        return [];
+      }
+
+      final lines = rental['items'] as List<dynamic>? ?? [];
+      return lines
+          .map(
+            (line) => RentalItem.fromErpNextLine(
+              rentalId: rentalId,
+              line: line as Map<String, dynamic>,
+            ),
+          )
+          .toList();
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Updates the damage_notes field for a specific rental item.
   Future<void> updateDamageNotes({
-    required String rentalItemId,
+    required String rentalId,
+    required int lineIdx,
     required String notes,
   }) async {
-    await supabase
-        .from(kTableRentalItems)
-        .update({'damage_notes': notes})
-        .eq('id', rentalItemId);
+    try {
+      await mcpClient.patch(
+        '/rentals/${Uri.encodeComponent(rentalId)}/lines/$lineIdx/damage',
+        body: {'damage_notes': notes},
+      );
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 }

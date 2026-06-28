@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/rental_item.dart';
 import '../../providers/rental_provider.dart';
 import '../../providers/client_provider.dart';
-import '../../core/error_handler.dart';
 import '../../core/constants.dart';
 import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
@@ -32,7 +32,7 @@ class RentalDetailScreen extends ConsumerWidget {
       body: rentalAsync.when(
         loading: () => const AppLoading(),
         error: (e, _) => AppError(
-          message: handleSupabaseError(e),
+          message: e.toString().replaceFirst('Exception: ', ''),
           onRetry: () => ref.invalidate(rentalDetailProvider(id)),
         ),
         data: (rental) => ListView(
@@ -134,7 +134,9 @@ class RentalDetailScreen extends ConsumerWidget {
             const SizedBox(height: 8),
             itemsAsync.when(
               loading: () => const AppLoading(),
-              error: (e, _) => AppError(message: handleSupabaseError(e)),
+              error: (e, _) => AppError(
+                message: e.toString().replaceFirst('Exception: ', ''),
+              ),
               data: (items) => Column(
                 children: items.map((item) {
                   return Padding(
@@ -177,8 +179,10 @@ class _ClientSection extends ConsumerWidget {
     final clientAsync = ref.watch(clientDetailProvider(clientId));
     return clientAsync.when(
       loading: () => const SizedBox(height: 44, child: AppLoading()),
-      error: (e, _) => Text(handleSupabaseError(e),
-          style: const TextStyle(color: Color(0xFF9999AA))),
+      error: (e, _) => Text(
+        e.toString().replaceFirst('Exception: ', ''),
+        style: const TextStyle(color: Color(0xFF9999AA)),
+      ),
       data: (client) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -227,7 +231,7 @@ class _ClientSection extends ConsumerWidget {
 
 class _EquipmentItemTile extends ConsumerStatefulWidget {
   const _EquipmentItemTile({required this.item, required this.rentalId});
-  final dynamic item; // RentalItem
+  final RentalItem item;
   final String rentalId;
 
   @override
@@ -255,10 +259,9 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
   Future<void> _saveDamageNotes() async {
     setState(() => _saving = true);
     try {
-      await ref
-          .read(rentalItemRepositoryProvider)
-          .updateDamageNotes(
-            rentalItemId: widget.item.id,
+      await ref.read(rentalItemRepositoryProvider).updateDamageNotes(
+            rentalId: widget.rentalId,
+            lineIdx: widget.item.lineIdx,
             notes: _damageCtrl.text.trim(),
           );
       ref.invalidate(rentalItemsProvider(widget.rentalId));
@@ -266,7 +269,7 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(handleSupabaseError(e)),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           backgroundColor: const Color(0xFFFF5252),
         ));
       }
@@ -295,7 +298,9 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  item.equipmentId,
+                  item.lineType == 'serialized'
+                      ? item.serialNo ?? item.equipmentId
+                      : '${item.equipmentId} × ${item.qty.toStringAsFixed(0)}',
                   style: const TextStyle(
                       color: Color(0xFFEEEEF5),
                       fontWeight: FontWeight.w500,
@@ -303,7 +308,7 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
                 ),
               ),
               Text(
-                (item.dailyRateSnapshot as double).toCurrency() + '/day',
+                item.dailyRateSnapshot.toCurrency() + '/day',
                 style:
                     const TextStyle(color: Color(0xFFE8A838), fontSize: 12),
               ),
@@ -444,7 +449,7 @@ class _ReturnButtonState extends ConsumerState<_ReturnButton> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(handleSupabaseError(e)),
+                    content: Text(e.toString().replaceFirst('Exception: ', '')),
                     backgroundColor: const Color(0xFFFF5252),
                   ));
                 }

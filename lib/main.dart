@@ -1,15 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'core/constants.dart';
 import 'app.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
   runApp(
     const ProviderScope(
       child: FilmRentalApp(),
@@ -32,8 +26,6 @@ class FilmRentalApp extends ConsumerWidget {
   }
 
   ThemeData _buildTheme() {
-    // Outfit font — will resolve when google_fonts is added to pubspec.yaml.
-    // Until then Flutter falls back to the system sans-serif.
     const fontFamily = 'Outfit';
 
     final base = ThemeData.dark(useMaterial3: true);

@@ -1,79 +1,112 @@
-import '../core/supabase_client.dart';
-import '../core/constants.dart';
+import '../core/mcp_client.dart';
+import '../core/error_handler.dart';
 import '../models/rental.dart';
+import '../models/rental_line_input.dart';
 
 class RentalRepository {
-  /// Returns all rentals, optionally filtered by status, ordered by
-  /// created_at descending.
   Future<List<Rental>> getAll({String? status}) async {
-    var query = supabase.from(kTableRentals).select();
-
-    if (status != null && status.isNotEmpty) {
-      query = query.eq('status', status);
+    try {
+      var path = '/rentals';
+      if (status != null && status.isNotEmpty) {
+        final erpStatus = status[0].toUpperCase() + status.substring(1);
+        path = '$path?status=${Uri.encodeComponent(erpStatus)}';
+      }
+      final data = await mcpClient.get(path);
+      return (data['rentals'] as List<dynamic>? ?? [])
+          .map((e) => Rental.fromErpNext(e as Map<String, dynamic>))
+          .toList();
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
     }
-
-    final data = await query.order('created_at', ascending: false);
-    return List<Rental>.from(
-      (data as List).map((e) => Rental.fromJson(e as Map<String, dynamic>)),
-    );
   }
 
-  /// Returns a single rental by id. Throws if not found.
   Future<Rental> getById({required String id}) async {
-    final data = await supabase
-        .from(kTableRentals)
-        .select()
-        .eq('id', id)
-        .maybeSingle();
-    if (data == null) {
-      throw Exception('Rental with id "$id" not found.');
+    try {
+      final data = await mcpClient.get('/rentals/${Uri.encodeComponent(id)}');
+      final rental = data['rental'] as Map<String, dynamic>?;
+      if (rental == null) {
+        throw Exception('Rental with id "$id" not found.');
+      }
+      return Rental.fromErpNext(rental);
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
     }
-    return Rental.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Creates a rental via the `create_rental` Supabase RPC and returns the
-  /// new rental UUID string.
-  Future<String> createViaRpc({
+  Future<String> createAndSubmit({
     required String clientId,
     required DateTime startDate,
     required DateTime endDate,
-    required List<String> equipmentIds,
+    required List<RentalLineInput> lines,
     required double depositAmount,
     required bool depositPaid,
     String? notes,
   }) async {
-    final userId = supabase.auth.currentUser!.id;
-    final result = await supabase.rpc('create_rental', params: {
-      'p_client_id': clientId,
-      'p_created_by': userId,
-      'p_start_date': startDate.toIso8601String().split('T').first,
-      'p_end_date': endDate.toIso8601String().split('T').first,
-      'p_deposit_amount': depositAmount,
-      'p_deposit_paid': depositPaid,
-      'p_notes': notes,
-      'p_equipment_ids': equipmentIds,
-    });
-    return result as String;
+    try {
+      final createData = await mcpClient.post(
+        '/rentals',
+        body: {
+          'customer': clientId,
+          'start_date': _formatDate(startDate),
+          'end_date': _formatDate(endDate),
+          'deposit_amount': depositAmount,
+          'deposit_paid': depositPaid,
+          if (notes != null) 'notes': notes,
+          'items': lines.map((line) => line.toMcpJson()).toList(),
+        },
+      );
+      final rental = createData['rental'] as Map<String, dynamic>?;
+      final name = rental?['name'] as String?;
+      if (name == null || name.isEmpty) {
+        throw Exception('Rental create did not return a name.');
+      }
+
+      final submitData = await mcpClient.post(
+        '/rentals/${Uri.encodeComponent(name)}/submit',
+      );
+      final submitted = submitData['rental'] as Map<String, dynamic>?;
+      return submitted?['name'] as String? ?? name;
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Updates an existing rental (notes, deposit, dates, etc.) by id and
-  /// returns the updated row.
-  Future<Rental> update({required Rental rental}) async {
-    final payload = rental.toJson()
-      ..remove('id')
-      ..remove('created_at');
-
-    final data = await supabase
-        .from(kTableRentals)
-        .update(payload)
-        .eq('id', rental.id)
-        .select()
-        .single();
-    return Rental.fromJson(data as Map<String, dynamic>);
+  Future<Rental> update({required Rental rental, List<RentalLineInput>? lines}) async {
+    try {
+      final body = <String, dynamic>{
+        'customer': rental.clientId,
+        'start_date': _formatDate(rental.startDate),
+        'end_date': _formatDate(rental.endDate),
+        'deposit_amount': rental.depositAmount,
+        'deposit_paid': rental.depositPaid,
+        if (rental.notes != null) 'notes': rental.notes,
+        if (lines != null) 'items': lines.map((line) => line.toMcpJson()).toList(),
+      };
+      final data = await mcpClient.patch(
+        '/rentals/${Uri.encodeComponent(rental.id)}',
+        body: body,
+      );
+      final updated = data['rental'] as Map<String, dynamic>?;
+      if (updated == null) {
+        throw Exception('Rental update did not return rental data.');
+      }
+      return Rental.fromErpNext(updated);
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
   }
 
-  /// Marks a rental as returned via the `return_rental` Supabase RPC.
-  Future<void> markReturnedViaRpc({required String rentalId}) async {
-    await supabase.rpc('return_rental', params: {'p_rental_id': rentalId});
+  Future<void> markReturned({required String rentalId}) async {
+    try {
+      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/return');
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 }
