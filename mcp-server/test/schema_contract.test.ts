@@ -77,8 +77,23 @@ describe("product operations schema", () => {
   });
 });
 
+describe("legacy test-data cleanup schema", () => {
+  it("explicitly removes orders that depend on the legacy products table", () => {
+    const migration = resolve(migrationsDirectory, legacyCleanupMigration());
+    const sql = readFileSync(migration, "utf8");
+
+    expect(sql).toMatch(/drop table if exists public\.orders cascade/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
+  ) ?? "";
+}
+
+function legacyCleanupMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_remove_legacy_test_orders\.sql$/.test(name),
   ) ?? "";
 }

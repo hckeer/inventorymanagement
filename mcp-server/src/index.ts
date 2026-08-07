@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { config as loadEnvironment } from "dotenv";
 import express from "express";
 
 import {
@@ -8,6 +8,9 @@ import {
 } from "./app.js";
 import { SessionStore } from "./lib/auth/session_store.js";
 import { registerMcpServer } from "./mcp.js";
+
+loadEnvironment();
+loadEnvironment({ path: ".env.supabase", override: false });
 
 async function main(): Promise<void> {
   const config = createAppConfigFromEnv();

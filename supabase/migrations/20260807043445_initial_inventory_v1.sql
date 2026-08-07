@@ -3,12 +3,13 @@
 
 drop function if exists public.return_rental(uuid);
 drop function if exists public.create_rental(uuid, uuid, date, date, numeric, boolean, text, uuid[]);
+drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user();
-drop function if exists public.update_updated_at();
 
 drop table if exists public.rental_items cascade;
 drop table if exists public.rentals cascade;
 drop table if exists public.equipment cascade;
+drop table if exists public.products cascade;
 drop table if exists public.clients cascade;
 drop table if exists public.categories cascade;
 drop table if exists public.profiles cascade;
