@@ -3,24 +3,14 @@ import express from "express";
 
 import {
   createAppConfigFromEnv,
-  createWarehouseService,
   registerRoutes,
 } from "./app.js";
-import { SessionStore } from "./lib/auth/session_store.js";
-import { registerMcpServer } from "./mcp.js";
 
 loadEnvironment();
 loadEnvironment({ path: ".env.supabase", override: false });
 
 async function main(): Promise<void> {
   const config = createAppConfigFromEnv();
-  const service = createWarehouseService(config);
-  const sessionStore = new SessionStore(config.sessionTtlSeconds * 1000);
-
-  if (process.argv.includes("--stdio")) {
-    await registerMcpServer(service);
-    return;
-  }
 
   const app = express();
   app.use(express.json());
@@ -35,7 +25,7 @@ async function main(): Promise<void> {
   });
   app.options(/.*/, (_req, res) => res.sendStatus(204));
 
-  registerRoutes(app, service, config, sessionStore);
+  registerRoutes(app, config);
 
   app.listen(config.port, () => {
     console.log(
