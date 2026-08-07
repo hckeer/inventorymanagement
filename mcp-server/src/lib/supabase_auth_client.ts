@@ -28,7 +28,8 @@ export class SupabaseAuthClient {
         Authorization: `Bearer ${accessToken}`,
       },
     });
-    if (response.status === 401) return null;
+    // If token is invalid/expired (401) or signature is bad (403), treat as no session
+    if (response.status === 401 || response.status === 403) return null;
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new Error(`Supabase Auth failed: ${response.status} ${text}`);
