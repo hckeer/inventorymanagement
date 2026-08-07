@@ -55,3 +55,30 @@ describe("initial inventory schema", () => {
     expect(sql).toMatch(/internal_qr text unique/i);
   });
 });
+
+describe("product operations schema", () => {
+  it("supplies an atomic product creation function", () => {
+    const migration = resolve(migrationsDirectory, productOperationsMigration());
+    const sql = readFileSync(migration, "utf8");
+
+    expect(sql).toMatch(/create function public\.create_product\(/i);
+    expect(sql).toMatch(/insert into public\.products/i);
+    expect(sql).toMatch(/insert into public\.product_identifiers/i);
+    expect(sql).toMatch(/insert into public\.stock_balances/i);
+  });
+
+  it("supplies a barcode resolver that prioritizes serialized assets", () => {
+    const migration = resolve(migrationsDirectory, productOperationsMigration());
+    const sql = readFileSync(migration, "utf8");
+
+    expect(sql).toMatch(/create function public\.lookup_barcode\(/i);
+    expect(sql).toMatch(/from public\.assets/i);
+    expect(sql).toMatch(/from public\.product_identifiers/i);
+  });
+});
+
+function productOperationsMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_product_operations\.sql$/.test(name),
+  ) ?? "";
+}
