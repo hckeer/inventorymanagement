@@ -10,6 +10,13 @@ export type WarehouseService = any;
 
 export function registerRoutes(app: Express, config: AppConfig): void {
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "inventory-mcp" }));
+  app.get("/api/v1/debug/config", (_req, res) => {
+    res.json({
+      supabaseUrl: config.supabaseUrl,
+      supabaseKeyPrefix: config.supabasePublishableKey.substring(0, 20) + "...",
+      jwtSecretPrefix: config.jwtSecret.substring(0, 5) + "..."
+    });
+  });
   const auth = createSupabaseAuthMiddleware(new SupabaseAuthClient({ url: config.supabaseUrl, publishableKey: config.supabasePublishableKey }));
   const database = new SupabaseRestClient({ url: config.supabaseUrl, serviceRoleKey: config.supabaseSecretKey });
   registerInventoryV1Routes(app, auth, database);
