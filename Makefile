@@ -6,7 +6,13 @@ ADB := $(HOME)/Android/platform-tools/adb
 LAN_IP := $(shell hostname -I | awk '{print $$1}')
 MCP_URL := http://$(LAN_IP):3001
 
-.PHONY: run run-phone build-android install analyze test deps clean devices mcp health stack-up
+# ── Production settings (set after Render deployment) ──────────────────────
+# Override on the command line:  make build-prod MCP_PROD_URL=https://your-app.onrender.com
+MCP_PROD_URL ?= https://lightbenders-mcp.onrender.com
+SUPABASE_URL ?= https://mtusxullmgsjxhpsnhwy.supabase.co
+SUPABASE_KEY ?= sb_publishable__CyWJEN4gcBn2pVBDlTEAg_p94GSczW
+
+.PHONY: run run-phone build-android build-prod install analyze test deps clean devices mcp health stack-up
 
 ## Run on connected device (uses this machine's LAN IP for MCP)
 run:
@@ -22,6 +28,20 @@ build-android:
 	$(FLUTTER) build apk \
 		--dart-define=MCP_BASE_URL=$(MCP_URL) \
 		--dart-define=MCP_API_VERSION=v1
+
+## Build PRODUCTION release APK — bakes the Render MCP URL + Supabase keys
+## Usage:  make build-prod
+##         make build-prod MCP_PROD_URL=https://my-app.onrender.com
+## Output: build/app/outputs/flutter-apk/app-release.apk
+build-prod:
+	$(FLUTTER) build apk --release \
+		--dart-define=MCP_BASE_URL=$(MCP_PROD_URL) \
+		--dart-define=MCP_API_VERSION=v1 \
+		--dart-define=SUPABASE_URL=$(SUPABASE_URL) \
+		--dart-define=SUPABASE_PUBLISHABLE_KEY=$(SUPABASE_KEY)
+	@echo ""
+	@echo "✅  Release APK ready:"
+	@echo "    build/app/outputs/flutter-apk/app-release.apk"
 
 install: run
 

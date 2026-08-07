@@ -28,8 +28,8 @@ class UserProfile {
     final roles = (json['roles'] as List<dynamic>?) ?? [];
     final primaryRole = roles.isNotEmpty ? roles.first as String : 'User';
     return UserProfile(
-      id: json['email'] as String? ?? json['name'] as String? ?? 'user',
-      fullName: json['name'] as String? ?? 'User',
+      id: json['id'] as String? ?? json['email'] as String? ?? 'user',
+      fullName: json['name'] as String? ?? json['email'] as String? ?? 'User',
       role: primaryRole,
       createdAt: DateTime.now(),
     );

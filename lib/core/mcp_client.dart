@@ -36,23 +36,33 @@ class McpClient {
     required String username,
     required String password,
   }) async {
-    final envelope = await _request(
-      method: 'POST',
-      path: '/auth/login',
-      body: {'username': username, 'password': password},
-      authenticated: false,
-    );
+    if (supabaseUrl.isEmpty || supabasePublishableKey.isEmpty) {
+      throw McpApiException('VALIDATION_ERROR', 'Supabase is not configured.');
+    }
+    final response = await _http.post(
+      Uri.parse('$supabaseUrl/auth/v1/token?grant_type=password'),
+      headers: {'apikey': supabasePublishableKey, 'Content-Type': 'application/json'},
+      body: jsonEncode({'email': username, 'password': password}),
+    ).timeout(const Duration(seconds: 30));
+    final envelope = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw McpApiException('UNAUTHORIZED', envelope['message'] as String? ?? 'Sign-in failed.');
+    }
     final token = envelope['access_token'] as String?;
     if (token == null || token.isEmpty) {
       throw McpApiException('VALIDATION_ERROR', 'Login did not return a token.');
     }
     await _storage.write(key: _tokenKey, value: token);
-    return envelope;
+    final user = envelope['user'] as Map<String, dynamic>? ?? {};
+    return {'user': {'id': user['id'], 'email': user['email'], 'name': user['email'], 'roles': const <String>[]}};
   }
 
   Future<void> logout() async {
     try {
-      await _request(method: 'POST', path: '/auth/logout');
+      final token = await getToken();
+      if (token != null && supabaseUrl.isNotEmpty) {
+        await _http.post(Uri.parse('$supabaseUrl/auth/v1/logout'), headers: {'apikey': supabasePublishableKey, 'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 30));
+      }
     } finally {
       await clearToken();
     }

@@ -260,8 +260,7 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
     setState(() => _saving = true);
     try {
       await ref.read(rentalItemRepositoryProvider).updateDamageNotes(
-            rentalId: widget.rentalId,
-            lineIdx: widget.item.lineIdx,
+            itemId: widget.item.id,
             notes: _damageCtrl.text.trim(),
           );
       ref.invalidate(rentalItemsProvider(widget.rentalId));

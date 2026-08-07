@@ -43,6 +43,16 @@ export class SupabaseRestClient {
     }
     return body as T;
   }
+
+  async get<T>(path: string): Promise<T> {
+    const response = await this.fetchImpl(`${this.baseUrl}/rest/v1/${path}`, { headers: { Accept: "application/json", apikey: this.serviceRoleKey, Authorization: `Bearer ${this.serviceRoleKey}` } });
+    const text = await response.text(); const body = text ? safeJson(text) : null;
+    if (!response.ok) throw new SupabaseRestError(errorMessage(body, response.statusText), response.status);
+    return body as T;
+  }
+  async post<T>(table: string, body: Record<string, unknown>): Promise<T> { return this.request<T>(`${table}`, "POST", body); }
+  async patch<T>(path: string, body: Record<string, unknown>): Promise<T> { return this.request<T>(path, "PATCH", body); }
+  private async request<T>(path: string, method: string, body: Record<string, unknown>): Promise<T> { const response=await this.fetchImpl(`${this.baseUrl}/rest/v1/${path}`,{method,headers:{Accept:"application/json","Content-Type":"application/json",Prefer:"return=representation",apikey:this.serviceRoleKey,Authorization:`Bearer ${this.serviceRoleKey}`},body:JSON.stringify(body)}); const text=await response.text();const parsed=text?safeJson(text):null;if(!response.ok)throw new SupabaseRestError(errorMessage(parsed,response.statusText),response.status);return parsed as T; }
 }
 
 function safeJson(text: string): unknown {

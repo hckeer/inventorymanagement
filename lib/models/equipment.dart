@@ -61,6 +61,23 @@ class Equipment {
     );
   }
 
+  factory Equipment.fromProduct(Map<String, dynamic> json) {
+    final balances = json['stock_balances'] as List<dynamic>? ?? [];
+    final balance = balances.isEmpty ? null : balances.first as Map<String, dynamic>;
+    final tracking = json['tracking_mode'] as String? ?? 'serialized';
+    return Equipment(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      categoryId: json['category_id'] as String? ?? '',
+      status: (json['is_active'] as bool? ?? true) ? 'available' : 'retired',
+      dailyRate: (json['daily_rate'] as num? ?? 0).toDouble(),
+      hasSerialNo: tracking == 'serialized',
+      notes: json['notes'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+    );
+  }
+
   /// Derives aggregate status from ERPNext item + serial rows (flutter_erpnextmcp.md).
   static String deriveItemStatus({
     required Map<String, dynamic> item,

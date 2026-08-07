@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/mcp_client.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -25,14 +26,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
     super.dispose();
   }
 
-  void _onDetect(BarcodeCapture capture) {
+  Future<void> _onDetect(BarcodeCapture capture) async {
     if (_hasScanned) return;
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isNotEmpty) {
       final String? rawValue = barcodes.first.rawValue;
       if (rawValue != null) {
         setState(() => _hasScanned = true);
-        context.pop(rawValue);
+        try {
+          final data = await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
+          if (!mounted) return;
+          context.pop(data['lookup']);
+        } on McpApiException {
+          if (!mounted) return;
+          context.pop({'result_type': 'unknown', 'barcode': rawValue});
+        }
       }
     }
   }

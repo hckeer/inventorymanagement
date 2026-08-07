@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm ci",
+  "env": {
+    "VITE_MCP_URL": {
+      "description": "Production MCP server URL (e.g. https://lightbenders-mcp.onrender.com)",
+      "required": true
+    }
+  }
+}

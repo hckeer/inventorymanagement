@@ -1,20 +1,22 @@
 import '../models/equipment.dart';
 
 class EquipmentSerial {
+  final String id;
   final String name;
   final String? warehouse;
   final String? status;
 
   const EquipmentSerial({
-    required this.name,
+    required this.id, required this.name,
     this.warehouse,
     this.status,
   });
 
   factory EquipmentSerial.fromJson(Map<String, dynamic> json) {
     return EquipmentSerial(
-      name: json['name'] as String,
-      warehouse: json['warehouse'] as String?,
+      id: json['id'] as String,
+      name: json['asset_id'] as String,
+      warehouse: null,
       status: json['status'] as String?,
     );
   }

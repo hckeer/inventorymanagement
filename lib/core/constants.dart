@@ -13,6 +13,8 @@ const mcpApiVersion = String.fromEnvironment(
 );
 /// Optional — required as X-Api-Key for warehouse routes when MCP server sets MCP_API_KEY.
 const mcpApiKey = String.fromEnvironment('MCP_API_KEY');
+const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const supabasePublishableKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
 
 // ---------------------------------------------------------------------------
 // Equipment status values

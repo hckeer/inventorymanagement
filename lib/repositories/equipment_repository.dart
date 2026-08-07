@@ -10,7 +10,7 @@ class EquipmentRepository {
     String? status,
   }) async {
     try {
-      var path = '/items';
+      var path = '/products';
       final query = <String>[];
       if (categoryId != null && categoryId.isNotEmpty) {
         query.add('group=${Uri.encodeComponent(categoryId)}');
@@ -20,8 +20,8 @@ class EquipmentRepository {
       }
 
       final data = await mcpClient.get(path);
-      final items = (data['items'] as List<dynamic>? ?? [])
-          .map((e) => Equipment.fromErpNextItem(e as Map<String, dynamic>))
+      final items = (data['products'] as List<dynamic>? ?? [])
+          .map((e) => Equipment.fromProduct(e as Map<String, dynamic>))
           .toList();
 
       if (status != null && status.isNotEmpty) {
@@ -40,37 +40,21 @@ class EquipmentRepository {
 
   Future<EquipmentDetail> getDetail({required String id}) async {
     try {
-      final data = await mcpClient.get('/items/${Uri.encodeComponent(id)}');
-      final item = data['item'] as Map<String, dynamic>?;
-      if (item == null) {
-        throw Exception('Equipment with id "$id" not found.');
-      }
-
-      final serialMaps = (data['serials'] as List<dynamic>? ?? [])
+      final items = await getAll();
+      final equipment = items.firstWhere((item) => item.id == id);
+      final data = await mcpClient.get('/products/${Uri.encodeComponent(id)}/assets');
+      final serialMaps = (data['assets'] as List<dynamic>? ?? [])
           .map((e) => e as Map<String, dynamic>)
           .toList();
       final serials = serialMaps
           .map(EquipmentSerial.fromJson)
           .toList();
 
-      final equipment = Equipment(
-        id: item['name'] as String,
-        name: item['item_name'] as String? ?? item['name'] as String,
-        categoryId: item['item_group'] as String? ?? '',
-        status: Equipment.deriveItemStatus(item: item, serials: serialMaps),
-        dailyRate: (item['standard_rate'] as num?)?.toDouble() ?? 0,
-        hasSerialNo: (item['has_serial_no'] as num? ?? 1) == 1,
-        serialNo: serials.length == 1 ? serials.first.name : null,
-        notes: null,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
       return EquipmentDetail(
         equipment: equipment,
         serials: serials,
-        qtyOnHand: (data['qty_on_hand'] as num?)?.toDouble() ?? 0,
-        rentalWarehouse: data['rental_warehouse'] as String? ?? '',
+        qtyOnHand: 0,
+        rentalWarehouse: '',
       );
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));

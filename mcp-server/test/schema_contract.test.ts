@@ -86,6 +86,16 @@ describe("legacy test-data cleanup schema", () => {
   });
 });
 
+describe("rental lifecycle schema", () => {
+  it("provides atomic reservation, checkout, and return functions", () => {
+    const sql = readFileSync(resolve(migrationsDirectory, rentalLifecycleMigration()), "utf8");
+    expect(sql).toMatch(/create function public\.create_rental\(/i);
+    expect(sql).toMatch(/create function public\.checkout_rental\(/i);
+    expect(sql).toMatch(/create function public\.return_rental\(/i);
+    expect(sql).toMatch(/insert into public\.inventory_events/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
@@ -96,4 +106,8 @@ function legacyCleanupMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_remove_legacy_test_orders\.sql$/.test(name),
   ) ?? "";
+}
+
+function rentalLifecycleMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) => /_rental_lifecycle\.sql$/.test(name)) ?? "";
 }

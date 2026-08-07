@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: lightbenders-mcp
+    runtime: node
+    region: singapore  # closest to Nepal — change to 'oregon' or 'frankfurt' if preferred
+    plan: free          # upgrade to 'starter' ($7/mo) for persistent uptime (no cold starts)
+    rootDir: mcp-server
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /health
+    envVars:
+      # ── Supabase (set these in the Render dashboard, not here) ──────────────
+      - key: SUPABASE_URL
+        sync: false  # means: set manually in dashboard
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      # ── JWT secret for Flutter auth tokens (generate a strong random string) ─
+      - key: MCP_JWT_SECRET
+        generateValue: true  # Render auto-generates a secure random value
+      # ── Optional API key for scanner-web (set if you want extra protection) ─
+      - key: MCP_API_KEY
+        sync: false
+      # ── Session TTL: 8 hours ──────────────────────────────────────────────
+      - key: MCP_SESSION_TTL_SECONDS
+        value: "28800"
+      # ── ERPNext: leave blank — not used in V1 runtime ────────────────────
+      - key: ERPNEXT_URL
+        value: ""
+      - key: ERPNEXT_API_KEY
+        value: ""
+      - key: ERPNEXT_API_SECRET
+        value: ""
+      # ── Render sets PORT automatically, but default to 3001 ─────────────
+      - key: PORT
+        value: "3001"

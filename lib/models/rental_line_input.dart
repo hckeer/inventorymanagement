@@ -4,6 +4,7 @@ class RentalLineInput {
   final String itemCode;
   final String itemName;
   final String? serialNo;
+  final String? assetId;
   final double qty;
   final double dailyRate;
 
@@ -12,17 +13,16 @@ class RentalLineInput {
     required this.itemCode,
     required this.itemName,
     this.serialNo,
+    this.assetId,
     required this.qty,
     required this.dailyRate,
   });
 
   Map<String, dynamic> toMcpJson() {
     return {
-      'line_type': lineType,
-      'item_code': itemCode,
-      if (serialNo != null) 'serial_no': serialNo,
-      'qty': qty,
-      'daily_rate_snapshot': dailyRate,
+      'product_id': itemCode,
+      if (assetId != null) 'asset_id': assetId,
+      if (assetId == null) 'quantity': qty.toInt(),
     };
   }
 }

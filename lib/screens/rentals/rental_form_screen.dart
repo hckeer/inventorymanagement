@@ -7,6 +7,7 @@ import '../../providers/client_provider.dart';
 import '../../providers/equipment_provider.dart';
 import '../../models/client.dart';
 import '../../models/equipment.dart';
+import '../../models/equipment_detail.dart';
 import '../../models/rental_line_input.dart';
 import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
@@ -80,7 +81,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
 
     Equipment? selectedItem;
-    String? selectedSerial;
+    EquipmentSerial? selectedSerial;
 
     final added = await showDialog<bool>(
       context: context,
@@ -144,7 +145,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                             style: TextStyle(color: Color(0xFF9999AA)),
                           );
                         }
-                        return DropdownButtonFormField<String>(
+                        return DropdownButtonFormField<EquipmentSerial>(
                           value: selectedSerial,
                           decoration:
                               const InputDecoration(labelText: 'Serial No'),
@@ -153,13 +154,12 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                           items: serials
                               .map(
                                 (serial) => DropdownMenuItem(
-                                  value: serial.name,
+                                  value: serial,
                                   child: Text(serial.name),
                                 ),
                               )
                               .toList(),
-                          onChanged: (value) =>
-                              setDialogState(() => selectedSerial = value),
+                          onChanged: (value) => setDialogState(() => selectedSerial = value),
                         );
                       },
                     ),
@@ -175,7 +175,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
               ElevatedButton(
                 onPressed: selectedItem != null &&
                         selectedSerial != null &&
-                        selectedSerial!.isNotEmpty
+                        selectedSerial != null
                     ? () => Navigator.pop(ctx, true)
                     : null,
                 child: const Text('Add'),
@@ -193,7 +193,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
             lineType: 'serialized',
             itemCode: selectedItem!.id,
             itemName: selectedItem!.name,
-            serialNo: selectedSerial,
+            serialNo: selectedSerial!.name,
+            assetId: selectedSerial!.id,
             qty: 1,
             dailyRate: selectedItem!.dailyRate,
           ),
