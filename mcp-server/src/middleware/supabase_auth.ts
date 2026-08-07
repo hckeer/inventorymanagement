@@ -23,8 +23,9 @@ export function createSupabaseAuthMiddleware(authClient: SupabaseAuthClient) {
       }
       req.user = user;
       next();
-    } catch {
-      res.status(502).json(fail(ErrorCodes.ERPNEXT_UNAVAILABLE, "Supabase Auth is unavailable"));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      res.status(502).json(fail(ErrorCodes.ERPNEXT_UNAVAILABLE, `Supabase Auth is unavailable: ${msg}`));
     }
   };
 }

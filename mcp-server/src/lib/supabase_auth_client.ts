@@ -29,7 +29,10 @@ export class SupabaseAuthClient {
       },
     });
     if (response.status === 401) return null;
-    if (!response.ok) throw new Error("Supabase Auth is unavailable");
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Supabase Auth failed: ${response.status} ${text}`);
+    }
 
     const body = await response.json() as { id?: unknown; email?: unknown };
     if (typeof body.id !== "string") return null;
