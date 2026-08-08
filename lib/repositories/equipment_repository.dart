@@ -64,21 +64,20 @@ class EquipmentRepository {
   Future<Equipment> create({required Equipment equipment, String? serialNo}) async {
     try {
       final body = <String, dynamic>{
-        'item_name': equipment.name,
-        'item_group': equipment.categoryId,
-        'standard_rate': equipment.dailyRate,
-        'has_serial_no': serialNo != null && serialNo.isNotEmpty,
+        'name': equipment.name,
+        'tracking_mode': equipment.hasSerialNo ? 'serialized' : 'quantity',
+        'daily_rate': equipment.dailyRate,
       };
-      if (serialNo != null && serialNo.isNotEmpty) {
-        body['serial_no'] = serialNo;
+      // The backend will create the asset for initial_quantity if quantity tracking.
+      // But for serialized, we might need a separate call to create the asset if serialNo is provided.
+      // For now, let's just create the product.
+      
+      final data = await mcpClient.post('/products', body: body);
+      final product = data['product'] as Map<String, dynamic>?;
+      if (product == null) {
+        throw Exception('Product create did not return product data.');
       }
-
-      final data = await mcpClient.post('/items', body: body);
-      final item = data['item'] as Map<String, dynamic>?;
-      if (item == null) {
-        throw Exception('Item create did not return item data.');
-      }
-      return Equipment.fromErpNextItem(item);
+      return Equipment.fromProduct(product);
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
     }
@@ -90,29 +89,17 @@ class EquipmentRepository {
   }) async {
     try {
       final data = await mcpClient.patch(
-        '/items/${Uri.encodeComponent(equipment.id)}',
+        '/products/${Uri.encodeComponent(equipment.id)}',
         body: {
-          'item_name': equipment.name,
-          'item_group': equipment.categoryId,
-          'standard_rate': equipment.dailyRate,
+          'name': equipment.name,
+          'daily_rate': equipment.dailyRate,
         },
       );
-      final item = data['item'] as Map<String, dynamic>?;
-      if (item == null) {
-        throw Exception('Item update did not return item data.');
+      final product = data['product'] as Map<String, dynamic>?;
+      if (product == null) {
+        throw Exception('Product update did not return product data.');
       }
-
-      if (newSerialNo != null && newSerialNo.isNotEmpty) {
-        await mcpClient.post(
-          '/serials',
-          body: {
-            'serial_no': newSerialNo,
-            'item_code': equipment.id,
-          },
-        );
-      }
-
-      return Equipment.fromErpNextItem(item);
+      return Equipment.fromProduct(product);
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
     }
@@ -121,8 +108,8 @@ class EquipmentRepository {
   Future<void> delete({required String id}) async {
     try {
       await mcpClient.patch(
-        '/items/${Uri.encodeComponent(id)}',
-        body: {'disabled': 1},
+        '/products/${Uri.encodeComponent(id)}',
+        body: {'is_active': false},
       );
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
