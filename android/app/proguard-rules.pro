@@ -1,0 +1,6 @@
+-keep class com.google.mlkit.** { *; }
+-keep interface com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-keep interface com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-keep class u3.** { *; }
+-keep interface u3.** { *; }
