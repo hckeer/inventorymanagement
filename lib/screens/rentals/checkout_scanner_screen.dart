@@ -21,7 +21,7 @@ class CheckoutScannerScreen extends ConsumerStatefulWidget {
       _CheckoutScannerScreenState();
 }
 
-class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> {
+class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> with WidgetsBindingObserver {
   final MobileScannerController _controller = MobileScannerController(
     formats: const [BarcodeFormat.all],
     detectionSpeed: DetectionSpeed.normal,
@@ -39,7 +39,32 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> {
   bool _isCheckingOut = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _controller.start();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    switch (state) {
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        return;
+      case AppLifecycleState.resumed:
+        // Restart the scanner when app resumes
+        _controller.start();
+      case AppLifecycleState.inactive:
+        // Stop the scanner when app is inactive
+        _controller.stop();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
@@ -162,6 +187,22 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> {
                 MobileScanner(
                   controller: _controller,
                   onDetect: _onDetect,
+                  errorBuilder: (context, error, child) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Camera Error:\n${error.errorDetails?.message ?? error.errorCode.name}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 Container(
                   width: 250,
