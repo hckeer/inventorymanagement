@@ -2,6 +2,8 @@ class RentalItem {
   final String id;
   final String rentalId;
   final String equipmentId;
+  String get productId => equipmentId;
+  final String? assetId;
   final String lineType;
   final String? serialNo;
   final double qty;
@@ -14,6 +16,7 @@ class RentalItem {
     required this.id,
     required this.rentalId,
     required this.equipmentId,
+    this.assetId,
     required this.lineType,
     this.serialNo,
     required this.qty,
@@ -28,6 +31,7 @@ class RentalItem {
       id: json['id'] as String,
       rentalId: json['rental_id'] as String,
       equipmentId: json['product_id'] as String,
+      assetId: json['asset_id'] as String?,
       lineType: json['asset_id'] == null ? 'quantity' : 'serialized',
       serialNo: null,
       qty: (json['quantity'] as num?)?.toDouble() ?? 1,

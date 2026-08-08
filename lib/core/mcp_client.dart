@@ -25,12 +25,26 @@ class McpClient {
 
   final http.Client _http;
   final FlutterSecureStorage _storage;
+  String? _memoryToken;
 
   String get _baseUrl => '$mcpBaseUrl/api/$mcpApiVersion';
 
-  Future<String?> getToken() => _storage.read(key: _tokenKey);
+  Future<String?> getToken() async {
+    if (_memoryToken != null) return _memoryToken;
+    try {
+      _memoryToken = await _storage.read(key: _tokenKey);
+    } catch (_) {
+      // Ignore secure storage read errors
+    }
+    return _memoryToken;
+  }
 
-  Future<void> clearToken() => _storage.delete(key: _tokenKey);
+  Future<void> clearToken() async {
+    _memoryToken = null;
+    try {
+      await _storage.delete(key: _tokenKey);
+    } catch (_) {}
+  }
 
   Future<Map<String, dynamic>> login({
     required String username,
@@ -46,13 +60,19 @@ class McpClient {
     ).timeout(const Duration(seconds: 30));
     final envelope = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw McpApiException('UNAUTHORIZED', envelope['message'] as String? ?? 'Sign-in failed.');
+      final errorMessage = envelope['msg'] ?? envelope['error_description'] ?? envelope['message'] ?? 'Sign-in failed.';
+      throw McpApiException('UNAUTHORIZED', errorMessage as String);
     }
     final token = envelope['access_token'] as String?;
     if (token == null || token.isEmpty) {
       throw McpApiException('VALIDATION_ERROR', 'Login did not return a token.');
     }
-    await _storage.write(key: _tokenKey, value: token);
+    _memoryToken = token;
+    try {
+      await _storage.write(key: _tokenKey, value: token);
+    } catch (_) {
+      // Ignore write errors if storage is corrupted
+    }
     final user = envelope['user'] as Map<String, dynamic>? ?? {};
     return {'user': {'id': user['id'], 'email': user['email'], 'name': user['email'], 'roles': const <String>[]}};
   }

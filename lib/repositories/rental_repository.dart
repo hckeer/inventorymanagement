@@ -89,6 +89,14 @@ class RentalRepository {
     }
   }
 
+  Future<void> checkout({required String rentalId}) async {
+    try {
+      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/checkout');
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
   Future<void> markReturned({required String rentalId}) async {
     try {
       await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/return');

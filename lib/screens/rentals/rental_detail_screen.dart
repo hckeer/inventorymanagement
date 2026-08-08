@@ -159,6 +159,32 @@ class RentalDetailScreen extends ConsumerWidget {
                 child: _ReturnButton(rentalId: id),
               ),
             ],
+            
+            // ── Checkout via Scanner ──────────────────────────────────────
+            if (rental.status == kRentalStatusReserved) ...[
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
+                  label: const Text('Checkout via Scanner'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE8A838),
+                    foregroundColor: const Color(0xFF0F0F13),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    // Get items to pass to scanner
+                    final items = itemsAsync.valueOrNull ?? [];
+                    context.push('/checkout-scanner', extra: {
+                      'rentalId': id,
+                      'items': items,
+                    });
+                  },
+                ),
+              ),
+            ],
 
             const SizedBox(height: 40),
           ],

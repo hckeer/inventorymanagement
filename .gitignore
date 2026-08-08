@@ -47,6 +47,7 @@ app.*.map.json
 # See Makefile for run commands
 .env
 .env.*
+.dart-define-prod.env
 
 # Skills (installed locally, not needed in version control for most teams)
 # Remove these lines if you want to commit skills

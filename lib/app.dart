@@ -8,6 +8,9 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/equipment/equipment_list_screen.dart';
 import 'screens/equipment/equipment_detail_screen.dart';
 import 'screens/equipment/equipment_form_screen.dart';
+import 'screens/equipment/scanner_screen.dart';
+import 'screens/rentals/checkout_scanner_screen.dart';
+import 'models/rental_item.dart';
 import 'screens/clients/client_list_screen.dart';
 import 'screens/clients/client_detail_screen.dart';
 import 'screens/clients/client_form_screen.dart';
@@ -15,7 +18,6 @@ import 'screens/rentals/rental_list_screen.dart';
 import 'screens/rentals/rental_detail_screen.dart';
 import 'screens/rentals/rental_form_screen.dart';
 import 'screens/warehouse/warehouse_screen.dart';
-import 'screens/equipment/scanner_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Router provider — Riverpod-aware so auth changes trigger redirects
@@ -52,6 +54,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/scanner',
         builder: (context, state) => const ScannerScreen(),
+      ),
+      GoRoute(
+        path: '/checkout-scanner',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CheckoutScannerScreen(
+            rentalId: extra['rentalId'] as String,
+            items: extra['items'] as List<RentalItem>,
+          );
+        },
       ),
 
       // ── Shell (persistent NavigationBar) ─────────────────────────────────

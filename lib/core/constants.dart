@@ -28,6 +28,7 @@ const String kStatusRetired = 'retired';
 // Rental status values
 // ---------------------------------------------------------------------------
 const String kRentalStatusActive = 'active';
+const String kRentalStatusReserved = 'reserved';
 const String kRentalStatusReturned = 'returned';
 const String kRentalStatusOverdue = 'overdue';
 const String kRentalStatusCancelled = 'cancelled';

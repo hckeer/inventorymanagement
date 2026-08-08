@@ -69,6 +69,17 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
     }
   }
 
+  /// Checks out a reserved rental via RPC and refreshes the list.
+  Future<void> checkout(String rentalId) async {
+    try {
+      await _repo.checkout(rentalId: rentalId);
+      ref.invalidateSelf();
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+
   /// Marks a rental as returned via RPC and refreshes the list.
   Future<void> markReturned(String rentalId) async {
     try {
