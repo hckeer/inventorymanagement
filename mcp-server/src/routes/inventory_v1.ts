@@ -30,6 +30,18 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
     catch (error) { handleError(res, error); }
   });
   app.post("/api/v1/rentals", auth, async (req: SupabaseAuthenticatedRequest, res) => { const parsed=rentalSchema.safeParse(req.body); if(!parsed.success || !req.user){res.status(422).json(fail("VALIDATION_ERROR","Invalid rental payload"));return;} try {res.status(201).json(ok({rental:await database.rpc("create_rental",{p_client_id:parsed.data.client_id,p_created_by:req.user.id,p_start_date:parsed.data.start_date,p_end_date:parsed.data.end_date,p_deposit_amount:parsed.data.deposit_amount,p_deposit_paid:parsed.data.deposit_paid,p_notes:parsed.data.notes??"",p_items:parsed.data.items})}));}catch(error){handleError(res,error);} });
+  
+  app.patch("/api/v1/products/:id", auth, async (req, res) => {
+    try {
+      const rows = await database.patch<Array<unknown>>(
+        `products?id=eq.${encodeURIComponent(String(req.params.id))}`,
+        req.body as Record<string, unknown>
+      );
+      res.json(ok({ product: rows[0] }));
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
   app.post("/api/v1/rentals/:id/checkout", auth, async (req: SupabaseAuthenticatedRequest,res)=>{try{res.json(ok({rental:await database.rpc("checkout_rental",{p_rental_id:req.params.id,p_created_by:req.user?.id})}));}catch(error){handleError(res,error);}});
   app.post("/api/v1/rentals/:id/return", auth, async (req: SupabaseAuthenticatedRequest,res)=>{try{res.json(ok({rental:await database.rpc("return_rental",{p_rental_id:req.params.id,p_created_by:req.user?.id})}));}catch(error){handleError(res,error);}});
 }
