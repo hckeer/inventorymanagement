@@ -6,19 +6,16 @@ class CategoryRepository {
   /// Item Groups derived from ERPNext Items (read-only).
   Future<List<Category>> getAll() async {
     try {
-      final data = await mcpClient.get('/items');
-      final groups = <String>{};
-      for (final row in data['items'] as List<dynamic>? ?? []) {
-        final group = (row as Map<String, dynamic>)['item_group'] as String?;
-        if (group != null && group.isNotEmpty) {
-          groups.add(group);
-        }
+      final data = await mcpClient.get('/categories');
+      final categories = <Category>[];
+      for (final row in data['categories'] as List<dynamic>? ?? []) {
+        final map = row as Map<String, dynamic>;
+        categories.add(Category(
+          id: map['id'] as String,
+          name: map['name'] as String,
+          createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
+        ));
       }
-      final now = DateTime.now();
-      final categories = groups
-          .map((name) => Category(id: name, name: name, createdAt: now))
-          .toList()
-        ..sort((a, b) => a.name.compareTo(b.name));
       return categories;
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));

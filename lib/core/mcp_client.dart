@@ -173,7 +173,7 @@ class McpClient {
     } catch (_) {
       throw McpApiException(
         'ERPNEXT_UNAVAILABLE',
-        humanizeError('Invalid MCP response (${response.statusCode})'),
+        humanizeError('Invalid MCP response (${response.statusCode}) from $uri\nBody: ${text.length > 100 ? text.substring(0, 100) : text}'),
       );
     }
 
