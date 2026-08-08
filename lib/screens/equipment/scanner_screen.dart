@@ -56,14 +56,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       final String? rawValue = barcodes.first.rawValue;
       if (rawValue != null) {
         setState(() => _hasScanned = true);
-        try {
-          final data = await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
-          if (!mounted) return;
-          context.pop(data['lookup']);
-        } on McpApiException {
-          if (!mounted) return;
-          context.pop({'result_type': 'unknown', 'barcode': rawValue});
-        }
+        if (!mounted) return;
+        context.pop(rawValue);
       }
     }
   }

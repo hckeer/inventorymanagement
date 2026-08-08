@@ -65,9 +65,18 @@ class EquipmentRepository {
     try {
       final body = <String, dynamic>{
         'name': equipment.name,
+        'category_id': equipment.categoryId,
+        'notes': equipment.notes,
         'tracking_mode': equipment.hasSerialNo ? 'serialized' : 'quantity',
         'daily_rate': equipment.dailyRate,
       };
+      
+      if (serialNo != null && serialNo.isNotEmpty) {
+        body['identifiers'] = [
+          {'identifier': serialNo, 'identifier_type': 'internal'}
+        ];
+      }
+
       // The backend will create the asset for initial_quantity if quantity tracking.
       // But for serialized, we might need a separate call to create the asset if serialNo is provided.
       // For now, let's just create the product.
@@ -92,6 +101,8 @@ class EquipmentRepository {
         '/products/${Uri.encodeComponent(equipment.id)}',
         body: {
           'name': equipment.name,
+          'category_id': equipment.categoryId,
+          'notes': equipment.notes,
           'daily_rate': equipment.dailyRate,
         },
       );
