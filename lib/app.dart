@@ -8,6 +8,7 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/equipment/equipment_list_screen.dart';
 import 'screens/equipment/equipment_detail_screen.dart';
 import 'screens/equipment/equipment_form_screen.dart';
+import 'screens/equipment/container_builder_screen.dart';
 import 'screens/equipment/scanner_screen.dart';
 import 'screens/rentals/checkout_scanner_screen.dart';
 import 'models/rental_item.dart';
@@ -81,6 +82,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/equipment',
             builder: (context, state) => const EquipmentListScreen(),
             routes: [
+              GoRoute(
+                path: 'container',
+                builder: (context, state) => const ContainerBuilderScreen(),
+              ),
               GoRoute(
                 path: 'new',
                 builder: (context, state) =>
@@ -192,7 +197,6 @@ class _AppShell extends StatelessWidget {
     (icon: Icons.videocam_outlined, activeIcon: Icons.videocam_rounded, label: 'Equipment', path: '/equipment'),
     (icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Clients', path: '/clients'),
     (icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long_rounded, label: 'Rentals', path: '/rentals'),
-    (icon: Icons.warehouse_outlined, activeIcon: Icons.warehouse_rounded, label: 'Warehouse', path: '/warehouse'),
   ];
 
   int _selectedIndex(BuildContext context) {

@@ -30,6 +30,20 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
     try { res.status(201).json(ok({ product: await database.rpc("create_product", { p_name: parsed.data.name, p_sku: parsed.data.sku ?? "", p_category_id: parsed.data.category_id ?? null, p_manufacturer_id: parsed.data.manufacturer_id ?? null, p_tracking_mode: parsed.data.tracking_mode, p_daily_rate: parsed.data.daily_rate, p_notes: parsed.data.notes ?? "", p_identifiers: parsed.data.identifiers, p_initial_quantity: parsed.data.initial_quantity }) })); }
     catch (error) { handleError(res, error); }
   });
+  app.post("/api/v1/assets/link", auth, async (req, res) => {
+    try {
+      const parent_barcode = String(req.body?.parent_barcode ?? "");
+      const child_barcodes = Array.isArray(req.body?.child_barcodes) ? req.body.child_barcodes.map(String) : [];
+      if (!parent_barcode || child_barcodes.length === 0) {
+        res.status(422).json(fail("VALIDATION_ERROR", "Missing parent_barcode or child_barcodes"));
+        return;
+      }
+      await database.rpc("link_assets_to_parent", { p_parent_barcode: parent_barcode, p_child_barcodes: child_barcodes });
+      res.json(ok({ success: true }));
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
   app.post("/api/v1/rentals", auth, async (req: SupabaseAuthenticatedRequest, res) => { const parsed=rentalSchema.safeParse(req.body); if(!parsed.success || !req.user){res.status(422).json(fail("VALIDATION_ERROR","Invalid rental payload"));return;} try {res.status(201).json(ok({rental:await database.rpc("create_rental",{p_client_id:parsed.data.client_id,p_created_by:req.user.id,p_start_date:parsed.data.start_date,p_end_date:parsed.data.end_date,p_deposit_amount:parsed.data.deposit_amount,p_deposit_paid:parsed.data.deposit_paid,p_notes:parsed.data.notes??"",p_items:parsed.data.items})}));}catch(error){handleError(res,error);} });
   
   app.patch("/api/v1/products/:id", auth, async (req, res) => {

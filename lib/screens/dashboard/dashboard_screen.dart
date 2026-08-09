@@ -156,6 +156,13 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 10),
                     _QuickAction(
+                      icon: Icons.all_inbox_rounded,
+                      label: 'Build Container',
+                      subtitle: 'Group items into a master case',
+                      onTap: () => context.push('/equipment/container'),
+                    ),
+                    const SizedBox(height: 10),
+                    _QuickAction(
                       icon: Icons.person_add_rounded,
                       label: 'Add Client',
                       subtitle: 'Add a new client to your database',

@@ -1,27 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+
 import '../../core/mcp_client.dart';
-import '../../models/rental_item.dart';
-import '../../providers/rental_provider.dart';
 
-class CheckoutScannerScreen extends ConsumerStatefulWidget {
-  const CheckoutScannerScreen({
-    super.key,
-    required this.rentalId,
-    required this.items,
-  });
-
-  final String rentalId;
-  final List<RentalItem> items;
+class ContainerBuilderScreen extends ConsumerStatefulWidget {
+  const ContainerBuilderScreen({super.key});
 
   @override
-  ConsumerState<CheckoutScannerScreen> createState() =>
-      _CheckoutScannerScreenState();
+  ConsumerState<ContainerBuilderScreen> createState() =>
+      _ContainerBuilderScreenState();
 }
 
-class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> with WidgetsBindingObserver {
+class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
+    with WidgetsBindingObserver {
   final MobileScannerController _controller = MobileScannerController(
     formats: const [BarcodeFormat.all],
     detectionSpeed: DetectionSpeed.normal,
@@ -29,14 +22,12 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
     torchEnabled: false,
   );
 
-  // Set of rental item IDs that have been verified.
-  final Set<String> _verifiedIds = {};
-  
-  // Track recently processed barcodes so we don't spam the API
+  String? _parentBarcode;
+  final Set<String> _childBarcodes = {};
   final Set<String> _recentScans = {};
-  
+
   bool _isProcessing = false;
-  bool _isCheckingOut = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -54,10 +45,8 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
       case AppLifecycleState.paused:
         return;
       case AppLifecycleState.resumed:
-        // Restart the scanner when app resumes
         _controller.start();
       case AppLifecycleState.inactive:
-        // Stop the scanner when app is inactive
         _controller.stop();
     }
   }
@@ -70,7 +59,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_isProcessing) return;
+    if (_isProcessing || _isSaving) return;
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isNotEmpty) {
       final String? rawValue = barcodes.first.rawValue;
@@ -79,68 +68,34 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
           _isProcessing = true;
           _recentScans.add(rawValue);
         });
-        
+
         try {
-          final data = await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
-          final lookup = data['lookup'] as Map<String, dynamic>?;
-          
-          if (lookup != null && lookup['result_type'] != 'unknown') {
-            final assetId = lookup['asset_id'] as String?;
-            final productId = lookup['product_id'] as String?;
-            final children = lookup['children'] as List<dynamic>? ?? [];
-            
-            int newlyVerifiedCount = 0;
-            
-            void verifyItem(String? aId, String? pId) {
-              RentalItem? match;
-              if (aId != null) {
-                match = widget.items.where((item) => item.assetId == aId).firstOrNull;
-              } else if (pId != null) {
-                match = widget.items.where((item) => 
-                  item.productId == pId && 
-                  !_verifiedIds.contains(item.id)
-                ).firstOrNull;
-              }
-
-              if (match != null && !_verifiedIds.contains(match.id)) {
-                setState(() {
-                  _verifiedIds.add(match!.id);
-                  newlyVerifiedCount++;
-                });
-              }
-            }
-            
-            // Verify parent
-            verifyItem(assetId, productId);
-            
-            // Verify children
-            for (final child in children) {
-              final childAssetId = child['asset_id'] as String?;
-              final childProductId = child['product_id'] as String?;
-              verifyItem(childAssetId, childProductId);
-            }
-
+          if (_parentBarcode == null) {
+            setState(() {
+              _parentBarcode = rawValue;
+            });
             if (mounted) {
-              if (newlyVerifiedCount > 0) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Verified $newlyVerifiedCount item(s)'),
-                  backgroundColor: const Color(0xFF4CAF50),
-                  duration: const Duration(seconds: 2),
-                ));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Item not in rental or already verified'),
-                  backgroundColor: Color(0xFFFF5252),
-                  duration: Duration(seconds: 2),
-                ));
-              }
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Parent set: $_parentBarcode'),
+                backgroundColor: const Color(0xFF4CAF50),
+                duration: const Duration(seconds: 2),
+              ));
+            }
+          } else if (rawValue != _parentBarcode &&
+              !_childBarcodes.contains(rawValue)) {
+            setState(() {
+              _childBarcodes.add(rawValue);
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Added child: $rawValue'),
+                backgroundColor: const Color(0xFF4CAF50),
+                duration: const Duration(seconds: 1),
+              ));
             }
           }
-        } catch (e) {
-          // Ignore network errors or bad lookups during continuous scan
         } finally {
-          // Clear recent scans after a few seconds to allow rescanning if needed
-          Future.delayed(const Duration(seconds: 3), () {
+          Future.delayed(const Duration(seconds: 2), () {
             if (mounted) {
               setState(() {
                 _recentScans.remove(rawValue);
@@ -153,35 +108,50 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
     }
   }
 
-  Future<void> _handleCheckout() async {
-    setState(() => _isCheckingOut = true);
+  Future<void> _handleSave() async {
+    if (_parentBarcode == null || _childBarcodes.isEmpty) return;
+
+    setState(() => _isSaving = true);
     try {
-      await ref.read(rentalListProvider.notifier).checkout(widget.rentalId);
+      await mcpClient.post(
+        '/assets/link',
+        body: {
+          'parent_barcode': _parentBarcode,
+          'child_barcodes': _childBarcodes.toList(),
+        },
+      );
+
       if (mounted) {
-        context.pop(); // Go back to rental detail
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Container linked successfully!'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+        context.pop(); // Go back
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: const Color(0xFFFF5252),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: const Color(0xFFFF5252),
+          ),
+        );
       }
     } finally {
-      if (mounted) setState(() => _isCheckingOut = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final allVerified = _verifiedIds.length == widget.items.length;
-
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F13),
         title: const Text(
-          'Scan to Checkout',
+          'Build Container',
           style: TextStyle(
             color: Color(0xFFEEEEF5),
             fontWeight: FontWeight.w700,
@@ -207,7 +177,8 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                          const Icon(Icons.error_outline_rounded,
+                              color: Colors.red, size: 48),
                           const SizedBox(height: 16),
                           Text(
                             'Camera Error:\n${error.errorDetails?.message ?? error.errorCode.name}',
@@ -224,8 +195,10 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                   height: 250,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: allVerified ? const Color(0xFF4CAF50) : const Color(0xFFE8A838), 
-                      width: 3
+                      color: _parentBarcode == null
+                          ? const Color(0xFFE8A838)
+                          : const Color(0xFF4CAF50),
+                      width: 3,
                     ),
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -233,12 +206,14 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                 Positioned(
                   bottom: 20,
                   child: Text(
-                    allVerified ? 'All items verified!' : 'Scan items to verify',
-                    style: TextStyle(
-                      color: allVerified ? const Color(0xFF4CAF50) : const Color(0xFFEEEEF5),
+                    _parentBarcode == null
+                        ? 'Scan Parent Barcode (e.g. Flight Case)'
+                        : 'Scan Child Barcodes',
+                    style: const TextStyle(
+                      color: Color(0xFFEEEEF5),
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      shadows: const [
+                      shadows: [
                         Shadow(
                           offset: Offset(0, 1),
                           blurRadius: 4.0,
@@ -251,7 +226,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
               ],
             ),
           ),
-          
+
           // List of items (bottom half)
           Expanded(
             flex: 5,
@@ -268,35 +243,49 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Items (${_verifiedIds.length} / ${widget.items.length})',
+                          _parentBarcode == null
+                              ? 'Awaiting Parent...'
+                              : 'Parent: $_parentBarcode',
                           style: const TextStyle(
-                            color: Color(0xFFEEEEF5),
-                            fontSize: 18,
+                            color: Color(0xFFE8A838),
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        // Manual override button for debugging or broken barcodes
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              for (final item in widget.items) {
-                                _verifiedIds.add(item.id);
-                              }
-                            });
-                          },
-                          child: const Text('Verify All Manually'),
-                        ),
+                        if (_parentBarcode != null)
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _parentBarcode = null;
+                                _childBarcodes.clear();
+                              });
+                            },
+                            child: const Text('Reset'),
+                          ),
                       ],
                     ),
                   ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Child Items',
+                        style: TextStyle(
+                          color: Color(0xFFEEEEF5),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Expanded(
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: widget.items.length,
+                      itemCount: _childBarcodes.length,
                       itemBuilder: (context, index) {
-                        final item = widget.items[index];
-                        final isVerified = _verifiedIds.contains(item.id);
-                        
+                        final child = _childBarcodes.elementAt(index);
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
@@ -304,22 +293,20 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                             color: const Color(0xFF252533),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isVerified ? const Color(0xFF4CAF50) : Colors.transparent,
+                              color: const Color(0xFF4CAF50),
                               width: 1,
                             ),
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                isVerified ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                color: isVerified ? const Color(0xFF4CAF50) : const Color(0xFF9999AA),
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Color(0xFF4CAF50),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  item.lineType == 'serialized'
-                                      ? (item.serialNo ?? item.equipmentId)
-                                      : '${item.equipmentId} × ${item.qty.toStringAsFixed(0)}',
+                                  child,
                                   style: const TextStyle(
                                     color: Color(0xFFEEEEF5),
                                     fontSize: 14,
@@ -327,34 +314,50 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                                   ),
                                 ),
                               ),
+                              IconButton(
+                                icon: const Icon(Icons.close,
+                                    color: Color(0xFF9999AA)),
+                                onPressed: () {
+                                  setState(() {
+                                    _childBarcodes.remove(child);
+                                  });
+                                },
+                              )
                             ],
                           ),
                         );
                       },
                     ),
                   ),
-                  
-                  // Checkout Button
+
+                  // Save Button
                   Padding(
                     padding: const EdgeInsets.all(20),
                     child: SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.outbox_rounded),
-                        label: _isCheckingOut
+                        icon: const Icon(Icons.link_rounded),
+                        label: _isSaving
                             ? const SizedBox(
-                                width: 18, height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F0F13)),
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Color(0xFF0F0F13)),
                               )
-                            : const Text('Confirm Checkout'),
+                            : Text('Link ${_childBarcodes.length} Items'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFE8A838),
                           foregroundColor: const Color(0xFF0F0F13),
-                          disabledBackgroundColor: const Color(0xFFE8A838).withOpacity(0.3),
+                          disabledBackgroundColor:
+                              const Color(0xFFE8A838).withOpacity(0.3),
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: (!allVerified || _isCheckingOut) ? null : _handleCheckout,
+                        onPressed:
+                            (_parentBarcode == null || _childBarcodes.isEmpty || _isSaving)
+                                ? null
+                                : _handleSave,
                       ),
                     ),
                   ),
