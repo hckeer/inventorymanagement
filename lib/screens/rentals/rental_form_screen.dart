@@ -146,7 +146,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         final allSerials = snapshot.data?.serials ?? [];
                         final serials = allSerials.where((s) {
                           final status = (s.status ?? '').toLowerCase();
-                          return status == 'available' || status == 'active';
+                          return status == 'available';
                         }).toList();
                         if (allSerials.isEmpty) {
                           return const Text(

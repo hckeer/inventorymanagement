@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/mcp_client.dart';
 import '../../models/rental_item.dart';
 import '../../providers/rental_provider.dart';
+import '../../providers/equipment_provider.dart';
+import '../../providers/dashboard_provider.dart';
 
 class CheckinScannerScreen extends ConsumerStatefulWidget {
   const CheckinScannerScreen({
@@ -138,7 +140,13 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
             }
           }
         } catch (e) {
-          // Ignore network errors or bad lookups during continuous scan
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Barcode lookup failed: $e'),
+              backgroundColor: const Color(0xFFFF5252),
+              duration: const Duration(seconds: 2),
+            ));
+          }
         } finally {
           // Clear recent scans after a few seconds to allow rescanning if needed
           Future.delayed(const Duration(seconds: 3), () {
@@ -157,8 +165,11 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
   Future<void> _handleCheckin() async {
     setState(() => _isCheckingIn = true);
     try {
-      await mcpClient.post('/rentals/${widget.rentalId}/return', body: {});
-      ref.invalidate(rentalListProvider);
+      await ref.read(rentalListProvider.notifier).markReturned(widget.rentalId);
+      ref.invalidate(rentalDetailProvider(widget.rentalId));
+      ref.invalidate(rentalItemsProvider(widget.rentalId));
+      ref.invalidate(equipmentListProvider);
+      ref.invalidate(dashboardStatsProvider);
       if (mounted) {
         context.pop(); // Go back to rental detail
       }

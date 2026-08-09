@@ -1,3 +1,8 @@
+alter table public.assets
+add column if not exists parent_id uuid references public.assets(id) on delete set null;
+
+create index if not exists assets_parent_id_idx on public.assets(parent_id);
+
 create or replace function public.lookup_barcode(p_identifier text)
 returns jsonb
 language plpgsql
@@ -26,7 +31,7 @@ begin
       from public.assets
       where parent_id = v_asset.id
       
-      union all
+      union
       
       select a.id, a.product_id, a.asset_id
       from public.assets a
@@ -34,15 +39,16 @@ begin
     )
     select coalesce(jsonb_agg(
       jsonb_build_object(
-        'asset_id', d.asset_id,
-        'product_id', d.product_id
+        'asset_id', d.id,
+        'product_id', d.product_id,
+        'barcode', d.asset_id
       )
     ), '[]'::jsonb) into v_children
     from descendants d;
 
     return jsonb_build_object(
       'result_type', 'asset',
-      'asset_id', v_asset.asset_id,
+      'asset_id', v_asset.id,
       'product_id', v_asset.product_id,
       'product_name', v_asset.product_name,
       'tracking_mode', v_asset.tracking_mode,
@@ -51,9 +57,11 @@ begin
   end if;
 
   -- 2. If no asset found, try to find a product matching the identifier
-  select * into v_product
-  from public.products
-  where sku = p_identifier or upc = p_identifier
+  select p.id, p.name, p.tracking_mode
+  into v_product
+  from public.product_identifiers pi
+  join public.products p on p.id = pi.product_id
+  where pi.identifier = p_identifier
   limit 1;
 
   if found then

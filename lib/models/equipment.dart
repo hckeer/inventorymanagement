@@ -65,11 +65,30 @@ class Equipment {
     final balances = json['stock_balances'] as List<dynamic>? ?? [];
     final balance = balances.isEmpty ? null : balances.first as Map<String, dynamic>;
     final tracking = json['tracking_mode'] as String? ?? 'serialized';
+    final assetStatuses = (json['assets'] as List<dynamic>? ?? [])
+        .map((asset) => (asset as Map<String, dynamic>)['status'] as String? ?? '')
+        .toList();
+    final availableQuantity = balance == null
+        ? 0
+        : ((balance['on_hand_quantity'] as num? ?? 0) -
+            (balance['reserved_quantity'] as num? ?? 0) -
+            (balance['rented_quantity'] as num? ?? 0));
+    final status = !(json['is_active'] as bool? ?? true)
+        ? 'retired'
+        : tracking == 'quantity'
+            ? (availableQuantity > 0 ? 'available' : 'rented')
+            : assetStatuses.contains('available')
+                ? 'available'
+                : assetStatuses.contains('rented') || assetStatuses.contains('reserved')
+                    ? 'rented'
+                    : assetStatuses.contains('maintenance')
+                        ? 'maintenance'
+                        : 'retired';
     return Equipment(
       id: json['id'] as String,
       name: json['name'] as String,
       categoryId: json['category_id'] as String? ?? '',
-      status: (json['is_active'] as bool? ?? true) ? 'available' : 'retired',
+      status: status,
       dailyRate: (json['daily_rate'] as num? ?? 0).toDouble(),
       hasSerialNo: tracking == 'serialized',
       notes: json['notes'] as String?,

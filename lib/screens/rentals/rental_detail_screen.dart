@@ -156,16 +156,6 @@ class RentalDetailScreen extends ConsumerWidget {
               ),
             ),
 
-            // ── Mark Returned ─────────────────────────────────────────────
-            if (rental.status == kRentalStatusActive ||
-                rental.status == kRentalStatusOverdue) ...[
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: _ReturnButton(rentalId: id),
-              ),
-            ],
-            
             // ── Checkout via Scanner ──────────────────────────────────────
             if (rental.status == kRentalStatusReserved) ...[
               const SizedBox(height: 28),
@@ -180,13 +170,13 @@ class RentalDetailScreen extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: () {
-                    final items = itemsAsync.valueOrNull ?? [];
+                  onPressed: itemsAsync.valueOrNull?.isNotEmpty == true ? () {
+                    final items = itemsAsync.valueOrNull!;
                     context.push('/checkout-scanner', extra: {
                       'rentalId': id,
                       'items': items,
                     });
-                  },
+                  } : null,
                 ),
               ),
             ],
@@ -205,13 +195,13 @@ class RentalDetailScreen extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: () {
-                    final items = itemsAsync.valueOrNull ?? [];
+                  onPressed: itemsAsync.valueOrNull?.isNotEmpty == true ? () {
+                    final items = itemsAsync.valueOrNull!;
                     context.push('/checkin-scanner', extra: {
                       'rentalId': id,
                       'items': items,
                     });
-                  },
+                  } : null,
                 ),
               ),
             ],
@@ -432,86 +422,6 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
             ),
         ],
       ),
-    );
-  }
-}
-
-// ── Return button ──────────────────────────────────────────────────────────
-
-class _ReturnButton extends ConsumerStatefulWidget {
-  const _ReturnButton({required this.rentalId});
-  final String rentalId;
-
-  @override
-  ConsumerState<_ReturnButton> createState() => _ReturnButtonState();
-}
-
-class _ReturnButtonState extends ConsumerState<_ReturnButton> {
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      icon: const Icon(Icons.check_circle_outline_rounded),
-      label: _loading
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Color(0xFF0F0F13)))
-          : const Text('Mark as returned'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF4CAF50),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-      onPressed: _loading
-          ? null
-          : () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  backgroundColor: const Color(0xFF1A1A24),
-                  title: const Text('Mark as returned?',
-                      style: TextStyle(color: Color(0xFFEEEEF5))),
-                  content: const Text(
-                    'This will free all equipment on this rental.',
-                    style: TextStyle(color: Color(0xFF9999AA)),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel',
-                          style: TextStyle(color: Color(0xFF9999AA))),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4CAF50)),
-                      child: const Text('Confirm'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirm != true) return;
-              setState(() => _loading = true);
-              try {
-                await ref
-                    .read(rentalListProvider.notifier)
-                    .markReturned(widget.rentalId);
-                if (mounted) context.pop();
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(e.toString().replaceFirst('Exception: ', '')),
-                    backgroundColor: const Color(0xFFFF5252),
-                  ));
-                }
-              } finally {
-                if (mounted) setState(() => _loading = false);
-              }
-            },
     );
   }
 }

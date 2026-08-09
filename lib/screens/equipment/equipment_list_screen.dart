@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/mcp_client.dart';
 import '../../providers/equipment_provider.dart';
 import '../../widgets/app_empty.dart';
 import '../../widgets/app_error.dart';
@@ -50,15 +51,27 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
             onPressed: () async {
               final barcode = await context.push<String>('/scanner');
               if (barcode != null && context.mounted) {
-                final equipmentList = ref.read(equipmentListProvider).valueOrNull;
-                if (equipmentList != null) {
-                  final found = equipmentList.where((e) => e.serialNo == barcode || e.id == barcode).firstOrNull;
-                  if (found != null) {
-                    context.push('/equipment/${found.id}');
-                  } else {
+                try {
+                  final data = await mcpClient.get(
+                    '/barcodes/${Uri.encodeComponent(barcode)}',
+                  );
+                  final lookup = data['lookup'] as Map<String, dynamic>?;
+                  final productId = lookup?['product_id'] as String?;
+                  if (productId != null && context.mounted) {
+                    context.push('/equipment/$productId');
+                  } else if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Equipment not found: $barcode'),
+                        backgroundColor: const Color(0xFFFF5252),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Barcode lookup failed: $e'),
                         backgroundColor: const Color(0xFFFF5252),
                       ),
                     );

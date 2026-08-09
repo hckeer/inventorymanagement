@@ -166,7 +166,9 @@ class McpClient {
         )
         .timeout(const Duration(seconds: 30));
 
-    final text = await response.stream.bytesToString();
+    final text = await response.stream
+        .bytesToString()
+        .timeout(const Duration(seconds: 30));
     Map<String, dynamic> payload;
     try {
       payload = jsonDecode(text) as Map<String, dynamic>;

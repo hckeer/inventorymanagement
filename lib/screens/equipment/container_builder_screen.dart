@@ -108,7 +108,8 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
           if (_parentBarcode == null) {
             _controller.stop();
             final name = await _promptForName(context, 'Parent Container Name');
-            _controller.start();
+            if (!mounted) return;
+            unawaited(_controller.start());
             if (name != null) {
               setState(() {
                 _parentBarcode = rawValue;
@@ -126,7 +127,8 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
               !_childBarcodes.containsKey(rawValue)) {
             _controller.stop();
             final name = await _promptForName(context, 'Child Item Name');
-            _controller.start();
+            if (!mounted) return;
+            unawaited(_controller.start());
             if (name != null) {
               setState(() {
                 _childBarcodes[rawValue] = name;
