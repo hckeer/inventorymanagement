@@ -32,13 +32,13 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   });
   app.post("/api/v1/assets/link", auth, async (req, res) => {
     try {
-      const parent_barcode = String(req.body?.parent_barcode ?? "");
-      const child_barcodes = Array.isArray(req.body?.child_barcodes) ? req.body.child_barcodes.map(String) : [];
-      if (!parent_barcode || child_barcodes.length === 0) {
-        res.status(422).json(fail("VALIDATION_ERROR", "Missing parent_barcode or child_barcodes"));
+      const parent = req.body?.parent;
+      const children = Array.isArray(req.body?.children) ? req.body.children : [];
+      if (!parent || !parent.barcode || children.length === 0) {
+        res.status(422).json(fail("VALIDATION_ERROR", "Missing parent.barcode or children array"));
         return;
       }
-      await database.rpc("link_assets_to_parent", { p_parent_barcode: parent_barcode, p_child_barcodes: child_barcodes });
+      await database.rpc("link_assets_to_parent", { p_parent: parent, p_children: children });
       res.json(ok({ success: true }));
     } catch (error) {
       handleError(res, error);
