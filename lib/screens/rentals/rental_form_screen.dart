@@ -34,8 +34,13 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   int get _rentalDays =>
       _endDate.difference(_startDate).inDays.clamp(1, 9999);
 
-  double get _estimatedTotal =>
-      _lines.fold(0, (sum, line) => sum + line.dailyRate * _rentalDays);
+  double get _estimatedTotal => _lines.fold(
+      0,
+      (sum, line) =>
+          sum +
+          (line.dailyRate *
+              (line.lineType == 'quantity' ? line.qty : 1) *
+              _rentalDays));
 
   @override
   void dispose() {
