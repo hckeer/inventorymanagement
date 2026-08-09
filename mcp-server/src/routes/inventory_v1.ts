@@ -4,7 +4,11 @@ import { fail, ok } from "../lib/api/envelope.js";
 import { SupabaseRestError, SupabaseRestClient } from "../lib/supabase_rest_client.js";
 import type { SupabaseAuthenticatedRequest } from "../middleware/supabase_auth.js";
 
-const productSchema = z.object({ name: z.string().min(1), sku: z.string().optional(), category_id: z.string().uuid().nullable().optional(), manufacturer_id: z.string().uuid().nullable().optional(), tracking_mode: z.enum(["serialized", "quantity"]), daily_rate: z.number().nonnegative().default(0), notes: z.string().optional(), identifiers: z.array(z.object({ identifier: z.string().min(1), identifier_type: z.enum(["ean_13", "upc_a", "internal"]) })).default([]), initial_quantity: z.number().int().nonnegative().default(0) });
+const productSchema = z.object({ name: z.string().min(1), sku: z.string().optional(), category_id: z.string().uuid().nullable().optional(), manufacturer_id: z.string().uuid().nullable().optional(), tracking_mode: z.enum(["serialized", "quantity"]), daily_rate: z.number().nonnegative().default(0), notes: z.string().optional(), identifiers: z.array(z.object({ identifier: z.string().min(1), identifier_type: z.enum(["ean_13", "upc_a", "internal"]) })).default([]), initial_quantity: z.number().int().nonnegative().default(0) }).strict();
+const productPatchSchema = z.object({ name: z.string().min(1), sku: z.string(), category_id: z.string().uuid().nullable(), manufacturer_id: z.string().uuid().nullable(), tracking_mode: z.enum(["serialized", "quantity"]), daily_rate: z.number().nonnegative(), notes: z.string(), identifiers: z.array(z.object({ identifier: z.string().min(1), identifier_type: z.enum(["ean_13", "upc_a", "internal"]) })), initial_quantity: z.number().int().nonnegative() }).partial().strict();
+const clientSchema = z.object({ full_name: z.string().min(1), phone: z.string().optional(), email: z.string().email().optional().or(z.literal("")), id_document: z.string().optional(), notes: z.string().optional() }).strict();
+const clientPatchSchema = clientSchema.partial().strict();
+const assetLinkSchema = z.object({ parent: z.object({ barcode: z.string().min(1) }).strict(), children: z.array(z.any()).min(1) }).strict();
 const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative().default(0), deposit_paid: z.boolean().default(false), notes: z.string().optional(), items: z.array(z.object({ product_id: z.string().uuid(), asset_id: z.string().uuid().optional(), quantity: z.number().int().positive().optional() })).min(1) });
 
 export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof import("../middleware/supabase_auth.js").createSupabaseAuthMiddleware>, database: SupabaseRestClient): void {
@@ -14,12 +18,12 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   app.get("/api/v1/products/:id/assets", auth, async (req,res)=>{try{res.json(ok({assets:await database.get(`assets?product_id=eq.${encodeURIComponent(String(req.params.id))}&select=*&order=asset_id.asc`)}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/categories", auth, async (_req,res)=>{try{res.json(ok({categories:await database.get("categories?select=*&order=name.asc")}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/clients", auth, async (_req,res)=>{try{res.json(ok({clients:await database.get("clients?select=*&order=full_name.asc")}));}catch(error){handleError(res,error);}});
-  app.post("/api/v1/clients",auth,async(req,res)=>{try{const rows=await database.post<Array<unknown>>("clients",req.body as Record<string,unknown>);res.status(201).json(ok({client:rows[0]}));}catch(error){handleError(res,error);}});
-  app.patch("/api/v1/clients/:id",auth,async(req,res)=>{try{const rows=await database.patch<Array<unknown>>(`clients?id=eq.${encodeURIComponent(String(req.params.id))}`,req.body as Record<string,unknown>);res.json(ok({client:rows[0]}));}catch(error){handleError(res,error);}});
+  app.post("/api/v1/clients",auth,async(req,res)=>{try{const parsed=clientSchema.safeParse(req.body);if(!parsed.success){res.status(422).json(fail("VALIDATION_ERROR","Invalid client payload"));return;}const rows=await database.post<Array<unknown>>("clients",parsed.data);res.status(201).json(ok({client:rows[0]}));}catch(error){handleError(res,error);}});
+  app.patch("/api/v1/clients/:id",auth,async(req,res)=>{try{const parsed=clientPatchSchema.safeParse(req.body);if(!parsed.success){res.status(422).json(fail("VALIDATION_ERROR","Invalid client payload"));return;}const rows=await database.patch<Array<unknown>>(`clients?id=eq.${encodeURIComponent(String(req.params.id))}`,parsed.data);if(!rows || rows.length===0){res.status(404).json(fail(404,"Client not found"));return;}res.json(ok({client:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals",auth,async(_req,res)=>{try{res.json(ok({rentals:await database.get("rentals?select=*,clients(full_name)&order=created_at.desc")}));}catch(error){handleError(res,error);}});
-  app.get("/api/v1/rentals/:id",auth,async(req,res)=>{try{const rows=await database.get<Array<unknown>>(`rentals?id=eq.${encodeURIComponent(String(req.params.id))}&select=*,clients(full_name)`);res.json(ok({rental:rows[0]}));}catch(error){handleError(res,error);}});
+  app.get("/api/v1/rentals/:id",auth,async(req,res)=>{try{const rows=await database.get<Array<unknown>>(`rentals?id=eq.${encodeURIComponent(String(req.params.id))}&select=*,clients(full_name)`);if(!rows || rows.length===0){res.status(404).json(fail(404,"Rental not found"));return;}res.json(ok({rental:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals/:id/items",auth,async(req,res)=>{try{res.json(ok({items:await database.get(`rental_items?rental_id=eq.${encodeURIComponent(String(req.params.id))}&select=*`)}));}catch(error){handleError(res,error);}});
-  app.patch("/api/v1/rental-items/:id/damage",auth,async(req,res)=>{try{const rows=await database.patch<Array<unknown>>(`rental_items?id=eq.${encodeURIComponent(String(req.params.id))}`,{damage_notes:String(req.body?.damage_notes??"")});res.json(ok({item:rows[0]}));}catch(error){handleError(res,error);}});
+  app.patch("/api/v1/rental-items/:id/damage",auth,async(req,res)=>{try{const rows=await database.patch<Array<unknown>>(`rental_items?id=eq.${encodeURIComponent(String(req.params.id))}`,{damage_notes:String(req.body?.damage_notes??"")});if(!rows || rows.length===0){res.status(404).json(fail(404,"Rental item not found"));return;}res.json(ok({item:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/barcodes/:identifier", auth, async (req, res) => {
     try { res.json(ok({ lookup: await database.rpc("lookup_barcode", { p_identifier: String(req.params.identifier).trim() }) })); }
     catch (error) { handleError(res, error); }
@@ -32,13 +36,12 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   });
   app.post("/api/v1/assets/link", auth, async (req, res) => {
     try {
-      const parent = req.body?.parent;
-      const children = Array.isArray(req.body?.children) ? req.body.children : [];
-      if (!parent || !parent.barcode || children.length === 0) {
-        res.status(422).json(fail("VALIDATION_ERROR", "Missing parent.barcode or children array"));
+      const parsed = assetLinkSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(422).json(fail("VALIDATION_ERROR", "Invalid asset link payload"));
         return;
       }
-      await database.rpc("link_assets_to_parent", { p_parent: parent, p_children: children });
+      await database.rpc("link_assets_to_parent", { p_parent: parsed.data.parent, p_children: parsed.data.children });
       res.json(ok({ success: true }));
     } catch (error) {
       handleError(res, error);
@@ -48,10 +51,13 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   
   app.patch("/api/v1/products/:id", auth, async (req, res) => {
     try {
+      const parsed = productPatchSchema.safeParse(req.body);
+      if (!parsed.success) { res.status(422).json(fail("VALIDATION_ERROR", "Invalid product payload")); return; }
       const rows = await database.patch<Array<unknown>>(
         `products?id=eq.${encodeURIComponent(String(req.params.id))}`,
-        req.body as Record<string, unknown>
+        parsed.data
       );
+      if(!rows || rows.length===0){res.status(404).json(fail(404,"Product not found"));return;}
       res.json(ok({ product: rows[0] }));
     } catch (error) {
       handleError(res, error);

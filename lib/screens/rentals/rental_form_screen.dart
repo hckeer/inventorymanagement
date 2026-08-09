@@ -138,10 +138,20 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                             style: const TextStyle(color: Color(0xFFFF5252)),
                           );
                         }
-                        final serials = snapshot.data?.serials ?? [];
-                        if (serials.isEmpty) {
+                        final allSerials = snapshot.data?.serials ?? [];
+                        final serials = allSerials.where((s) {
+                          final status = (s.status ?? '').toLowerCase();
+                          return status == 'available' || status == 'active';
+                        }).toList();
+                        if (allSerials.isEmpty) {
                           return const Text(
                             'No serials for this item.',
+                            style: TextStyle(color: Color(0xFF9999AA)),
+                          );
+                        }
+                        if (serials.isEmpty) {
+                          return const Text(
+                            'No available serials.',
                             style: TextStyle(color: Color(0xFF9999AA)),
                           );
                         }
@@ -375,10 +385,13 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
             message: e.toString().replaceFirst('Exception: ', ''),
           ),
           data: (allEquipment) {
+            final availableEquipment = allEquipment
+                .where((e) => e.status.toLowerCase() == 'available')
+                .toList();
             final serializedItems =
-                allEquipment.where((e) => e.hasSerialNo).toList();
+                availableEquipment.where((e) => e.hasSerialNo).toList();
             final qtyItems =
-                allEquipment.where((e) => !e.hasSerialNo).toList();
+                availableEquipment.where((e) => !e.hasSerialNo).toList();
 
             return ListView(
               padding: const EdgeInsets.all(20),

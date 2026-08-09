@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:async';
 import 'package:go_router/go_router.dart';
 import '../../core/mcp_client.dart';
 import '../../models/rental_item.dart';
@@ -52,13 +53,13 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        return;
+      case AppLifecycleState.inactive:
+        unawaited(_controller.stop());
+        break;
       case AppLifecycleState.resumed:
         // Restart the scanner when app resumes
-        _controller.start();
-      case AppLifecycleState.inactive:
-        // Stop the scanner when app is inactive
-        _controller.stop();
+        unawaited(_controller.start());
+        break;
     }
   }
 
@@ -274,17 +275,6 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
-                        ),
-                        // Manual override button for debugging or broken barcodes
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              for (final item in widget.items) {
-                                _verifiedIds.add(item.id);
-                              }
-                            });
-                          },
-                          child: const Text('Verify All Manually'),
                         ),
                       ],
                     ),

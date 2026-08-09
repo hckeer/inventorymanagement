@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:async';
 import 'package:go_router/go_router.dart';
 import '../../core/mcp_client.dart';
 
@@ -34,11 +35,12 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        return;
-      case AppLifecycleState.resumed:
-        _controller.start();
       case AppLifecycleState.inactive:
-        _controller.stop();
+        unawaited(_controller.stop());
+        break;
+      case AppLifecycleState.resumed:
+        unawaited(_controller.start());
+        break;
     }
   }
 

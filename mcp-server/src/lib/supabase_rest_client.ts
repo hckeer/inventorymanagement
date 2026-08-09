@@ -17,7 +17,15 @@ export class SupabaseRestClient {
   constructor({ url, serviceRoleKey, fetchImpl = fetch }: SupabaseRestClientOptions) {
     this.baseUrl = url.replace(/\/$/, "");
     this.serviceRoleKey = serviceRoleKey;
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = async (input, init) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      try {
+        return await fetchImpl(input, { ...init, signal: controller.signal as AbortSignal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
   }
 
   private readonly baseUrl: string;

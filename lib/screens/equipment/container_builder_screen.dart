@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:async';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/mcp_client.dart';
@@ -44,11 +45,12 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        return;
-      case AppLifecycleState.resumed:
-        _controller.start();
       case AppLifecycleState.inactive:
-        _controller.stop();
+        unawaited(_controller.stop());
+        break;
+      case AppLifecycleState.resumed:
+        unawaited(_controller.start());
+        break;
     }
   }
 
