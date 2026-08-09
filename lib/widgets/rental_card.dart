@@ -82,7 +82,30 @@ class RentalCard extends StatelessWidget {
                                 StatusBadge(status: rental.status),
                               ],
                             ),
-                            const SizedBox(height: 8),
+                            if (rental.clientName != null) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.person_outline_rounded,
+                                    size: 12,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    rental.clientName!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: scheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 6),
                             Row(
                               children: [
                                 Icon(

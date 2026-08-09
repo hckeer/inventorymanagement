@@ -28,6 +28,12 @@ class RentalDetailScreen extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_rounded),
+            onPressed: () => context.push('/rentals/$id/edit'),
+          ),
+        ],
       ),
       body: rentalAsync.when(
         loading: () => const AppLoading(),
@@ -175,9 +181,33 @@ class RentalDetailScreen extends ConsumerWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: () {
-                    // Get items to pass to scanner
                     final items = itemsAsync.valueOrNull ?? [];
                     context.push('/checkout-scanner', extra: {
+                      'rentalId': id,
+                      'items': items,
+                    });
+                  },
+                ),
+              ),
+            ],
+
+            // ── Return via Scanner ──────────────────────────────────────
+            if (rental.status == kRentalStatusActive || rental.status == kRentalStatusOverdue) ...[
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
+                  label: const Text('Return via Scanner'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    foregroundColor: const Color(0xFF0F0F13),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    final items = itemsAsync.valueOrNull ?? [];
+                    context.push('/checkin-scanner', extra: {
                       'rentalId': id,
                       'items': items,
                     });

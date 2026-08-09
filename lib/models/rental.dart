@@ -3,6 +3,7 @@ import '../core/constants.dart';
 class Rental {
   final String id;
   final String clientId;
+  final String? clientName;
   final String createdBy;
 
   /// DATE column — stored as a date-only value (no time component).
@@ -21,6 +22,7 @@ class Rental {
   const Rental({
     required this.id,
     required this.clientId,
+    this.clientName,
     required this.createdBy,
     required this.startDate,
     required this.endDate,
@@ -37,9 +39,14 @@ class Rental {
   // ---------------------------------------------------------------------------
 
   factory Rental.fromJson(Map<String, dynamic> json) {
+    String? cName;
+    if (json['clients'] != null && json['clients'] is Map) {
+      cName = json['clients']['full_name'] as String?;
+    }
     return Rental(
       id: json['id'] as String,
       clientId: json['client_id'] as String,
+      clientName: cName,
       createdBy: json['created_by'] as String,
       // DATE columns arrive as plain date strings, e.g. "2026-06-13"
       startDate: DateTime.parse(json['start_date'] as String),

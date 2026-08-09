@@ -23,7 +23,8 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
   );
 
   String? _parentBarcode;
-  final Set<String> _childBarcodes = {};
+  String? _parentName;
+  final Map<String, String> _childBarcodes = {};
   final Set<String> _recentScans = {};
 
   bool _isProcessing = false;
@@ -58,6 +59,38 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
     super.dispose();
   }
 
+  Future<String?> _promptForName(BuildContext context, String title) {
+    String name = '';
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A24),
+        title: Text(title, style: const TextStyle(color: Color(0xFFEEEEF5))),
+        content: TextField(
+          autofocus: true,
+          style: const TextStyle(color: Color(0xFFEEEEF5)),
+          decoration: const InputDecoration(
+            hintText: 'Enter name',
+            hintStyle: TextStyle(color: Color(0xFF9999AA)),
+          ),
+          onChanged: (v) => name = v,
+          onSubmitted: (v) => Navigator.pop(c, v.trim().isEmpty ? null : v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, name.trim().isEmpty ? null : name.trim()),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_isProcessing || _isSaving) return;
     final List<Barcode> barcodes = capture.barcodes;
@@ -71,27 +104,38 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
 
         try {
           if (_parentBarcode == null) {
-            setState(() {
-              _parentBarcode = rawValue;
-            });
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('Parent set: $_parentBarcode'),
-                backgroundColor: const Color(0xFF4CAF50),
-                duration: const Duration(seconds: 2),
-              ));
+            _controller.stop();
+            final name = await _promptForName(context, 'Parent Container Name');
+            _controller.start();
+            if (name != null) {
+              setState(() {
+                _parentBarcode = rawValue;
+                _parentName = name;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Parent set: $_parentName'),
+                  backgroundColor: const Color(0xFF4CAF50),
+                  duration: const Duration(seconds: 2),
+                ));
+              }
             }
           } else if (rawValue != _parentBarcode &&
-              !_childBarcodes.contains(rawValue)) {
-            setState(() {
-              _childBarcodes.add(rawValue);
-            });
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('Added child: $rawValue'),
-                backgroundColor: const Color(0xFF4CAF50),
-                duration: const Duration(seconds: 1),
-              ));
+              !_childBarcodes.containsKey(rawValue)) {
+            _controller.stop();
+            final name = await _promptForName(context, 'Child Item Name');
+            _controller.start();
+            if (name != null) {
+              setState(() {
+                _childBarcodes[rawValue] = name;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Added child: $name'),
+                  backgroundColor: const Color(0xFF4CAF50),
+                  duration: const Duration(seconds: 1),
+                ));
+              }
             }
           }
         } finally {
@@ -116,8 +160,14 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
       await mcpClient.post(
         '/assets/link',
         body: {
-          'parent_barcode': _parentBarcode,
-          'child_barcodes': _childBarcodes.toList(),
+          'parent': {
+            'barcode': _parentBarcode,
+            'name': _parentName ?? 'Generic Container',
+          },
+          'children': _childBarcodes.entries.map((e) => {
+            'barcode': e.key,
+            'name': e.value,
+          }).toList(),
         },
       );
 
@@ -245,7 +295,7 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
                         Text(
                           _parentBarcode == null
                               ? 'Awaiting Parent...'
-                              : 'Parent: $_parentBarcode',
+                              : 'Parent: ${_parentName ?? _parentBarcode}',
                           style: const TextStyle(
                             color: Color(0xFFE8A838),
                             fontSize: 16,
@@ -285,7 +335,7 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       itemCount: _childBarcodes.length,
                       itemBuilder: (context, index) {
-                        final child = _childBarcodes.elementAt(index);
+                        final childEntry = _childBarcodes.entries.elementAt(index);
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
@@ -305,13 +355,25 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
-                                  child,
-                                  style: const TextStyle(
-                                    color: Color(0xFFEEEEF5),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      childEntry.value,
+                                      style: const TextStyle(
+                                        color: Color(0xFFEEEEF5),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      childEntry.key,
+                                      style: const TextStyle(
+                                        color: Color(0xFF9999AA),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               IconButton(
@@ -319,7 +381,7 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
                                     color: Color(0xFF9999AA)),
                                 onPressed: () {
                                   setState(() {
-                                    _childBarcodes.remove(child);
+                                    _childBarcodes.remove(childEntry.key);
                                   });
                                 },
                               )

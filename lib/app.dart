@@ -11,6 +11,7 @@ import 'screens/equipment/equipment_form_screen.dart';
 import 'screens/equipment/container_builder_screen.dart';
 import 'screens/equipment/scanner_screen.dart';
 import 'screens/rentals/checkout_scanner_screen.dart';
+import 'screens/rentals/checkin_scanner_screen.dart';
 import 'models/rental_item.dart';
 import 'screens/clients/client_list_screen.dart';
 import 'screens/clients/client_detail_screen.dart';
@@ -61,6 +62,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>;
           return CheckoutScannerScreen(
+            rentalId: extra['rentalId'] as String,
+            items: extra['items'] as List<RentalItem>,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/checkin-scanner',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CheckinScannerScreen(
             rentalId: extra['rentalId'] as String,
             items: extra['items'] as List<RentalItem>,
           );
