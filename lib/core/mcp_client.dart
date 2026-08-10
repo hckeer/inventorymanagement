@@ -11,7 +11,11 @@ const _accessTokenKey = 'mcp_access_token';
 const _refreshTokenKey = 'mcp_refresh_token';
 const _expiresAtKey = 'mcp_access_token_expires_at';
 const _refreshWindow = Duration(minutes: 1);
-const _requestTimeout = Duration(seconds: 15);
+// This is one deadline for the entire request (connection plus response body).
+// The first authenticated request can include Supabase Auth validation and the
+// inventory query, so it needs more than the server's individual 15 second
+// upstream timeout without reverting to the former 60-second combined wait.
+const _requestTimeout = Duration(seconds: 30);
 
 class McpApiException implements Exception {
   McpApiException(this.code, this.message);
@@ -323,6 +327,10 @@ class McpClient {
       try {
         payload = jsonDecode(text) as Map<String, dynamic>;
       } catch (_) {
+        if (response.statusCode >= 500) {
+          throw McpApiException('SERVER_UNAVAILABLE',
+              'The inventory server is temporarily unavailable. Please try again.');
+        }
         throw McpApiException(
             'ERPNEXT_UNAVAILABLE',
             humanizeError(

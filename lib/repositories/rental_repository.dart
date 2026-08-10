@@ -12,7 +12,14 @@ class RentalRepository {
         path = '$path?status=${Uri.encodeComponent(erpStatus)}';
       }
       final data = await mcpClient.get(path);
-      return (data['rentals'] as List<dynamic>? ?? [])
+      final rawRentals = data['rentals'];
+      final rentals = switch (rawRentals) {
+        List<dynamic> rows => rows,
+        Map<dynamic, dynamic> row when row['id'] is String => [row],
+        null => <dynamic>[],
+        _ => throw Exception('Invalid rental list response from the server.'),
+      };
+      return rentals
           .map((e) => Rental.fromJson(e as Map<String, dynamic>))
           .toList();
     } on McpApiException catch (e) {
@@ -46,15 +53,15 @@ class RentalRepository {
   }) async {
     try {
       final createData = await mcpClient.post('/rentals', body: {
-          'client_id': clientId,
-          'start_date': _formatDate(startDate),
-          'end_date': _formatDate(endDate),
-          'deposit_amount': depositAmount,
-          'deposit_paid': depositPaid,
-          if (notes != null) 'notes': notes,
-          'items': lines.map((line) => line.toMcpJson()).toList(),
-          'override_asset_ids': overrideAssetIds,
-          if (overrideReason != null) 'override_reason': overrideReason,
+        'client_id': clientId,
+        'start_date': _formatDate(startDate),
+        'end_date': _formatDate(endDate),
+        'deposit_amount': depositAmount,
+        'deposit_paid': depositPaid,
+        if (notes != null) 'notes': notes,
+        'items': lines.map((line) => line.toMcpJson()).toList(),
+        'override_asset_ids': overrideAssetIds,
+        if (overrideReason != null) 'override_reason': overrideReason,
       });
       final rental = createData['rental'] as Map<String, dynamic>?;
       final name = rental?['id'] as String?;
@@ -68,7 +75,8 @@ class RentalRepository {
     }
   }
 
-  Future<Rental> update({required Rental rental, List<RentalLineInput>? lines}) async {
+  Future<Rental> update(
+      {required Rental rental, List<RentalLineInput>? lines}) async {
     try {
       final body = <String, dynamic>{
         'customer': rental.clientId,
@@ -77,7 +85,8 @@ class RentalRepository {
         'deposit_amount': rental.depositAmount,
         'deposit_paid': rental.depositPaid,
         if (rental.notes != null) 'notes': rental.notes,
-        if (lines != null) 'items': lines.map((line) => line.toMcpJson()).toList(),
+        if (lines != null)
+          'items': lines.map((line) => line.toMcpJson()).toList(),
       };
       final data = await mcpClient.patch(
         '/rentals/${Uri.encodeComponent(rental.id)}',
