@@ -42,13 +42,12 @@ class EquipmentRepository {
     try {
       final items = await getAll();
       final equipment = items.firstWhere((item) => item.id == id);
-      final data = await mcpClient.get('/products/${Uri.encodeComponent(id)}/assets');
+      final data =
+          await mcpClient.get('/products/${Uri.encodeComponent(id)}/assets');
       final serialMaps = (data['assets'] as List<dynamic>? ?? [])
           .map((e) => e as Map<String, dynamic>)
           .toList();
-      final serials = serialMaps
-          .map(EquipmentSerial.fromJson)
-          .toList();
+      final serials = serialMaps.map(EquipmentSerial.fromJson).toList();
 
       return EquipmentDetail(
         equipment: equipment,
@@ -61,7 +60,8 @@ class EquipmentRepository {
     }
   }
 
-  Future<Equipment> create({required Equipment equipment, String? serialNo}) async {
+  Future<Equipment> create(
+      {required Equipment equipment, String? serialNo}) async {
     try {
       final body = <String, dynamic>{
         'name': equipment.name,
@@ -70,17 +70,11 @@ class EquipmentRepository {
         'tracking_mode': equipment.hasSerialNo ? 'serialized' : 'quantity',
         'daily_rate': equipment.dailyRate,
       };
-      
+
       if (serialNo != null && serialNo.isNotEmpty) {
-        body['identifiers'] = [
-          {'identifier': serialNo, 'identifier_type': 'internal'}
-        ];
+        body['asset_barcode'] = serialNo;
       }
 
-      // The backend will create the asset for initial_quantity if quantity tracking.
-      // But for serialized, we might need a separate call to create the asset if serialNo is provided.
-      // For now, let's just create the product.
-      
       final data = await mcpClient.post('/products', body: body);
       final product = data['product'] as Map<String, dynamic>?;
       if (product == null) {

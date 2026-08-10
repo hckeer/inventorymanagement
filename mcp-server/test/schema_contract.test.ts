@@ -109,6 +109,15 @@ describe("rental scan reliability schema", () => {
   });
 });
 
+describe("serialized asset creation schema", () => {
+  it("creates a scanned physical asset atomically with its product", () => {
+    const sql = readFileSync(resolve(migrationsDirectory, serializedAssetMigration()), "utf8");
+    expect(sql).toMatch(/create function public\.create_product_with_asset\(/i);
+    expect(sql).toMatch(/insert into public\.assets/i);
+    expect(sql).toMatch(/p_asset_barcode/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
@@ -128,5 +137,11 @@ function rentalLifecycleMigration(): string {
 function reliabilityMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_rental_scan_reliability\.sql$/.test(name),
+  ) ?? "";
+}
+
+function serializedAssetMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_create_serialized_product_with_asset\.sql$/.test(name),
   ) ?? "";
 }

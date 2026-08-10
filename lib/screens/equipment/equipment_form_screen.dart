@@ -18,7 +18,8 @@ class EquipmentFormScreen extends ConsumerStatefulWidget {
   final String? equipmentId;
 
   @override
-  ConsumerState<EquipmentFormScreen> createState() => _EquipmentFormScreenState();
+  ConsumerState<EquipmentFormScreen> createState() =>
+      _EquipmentFormScreenState();
 }
 
 class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
@@ -61,7 +62,8 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
         categoryId: _selectedCategoryId!,
         status: _status,
         dailyRate: double.parse(_dailyRateCtrl.text.trim()),
-        serialNo: _serialCtrl.text.trim().isEmpty ? null : _serialCtrl.text.trim(),
+        serialNo:
+            _serialCtrl.text.trim().isEmpty ? null : _serialCtrl.text.trim(),
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -98,6 +100,12 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
     }
   }
 
+  Future<void> _scanAssetBarcode() async {
+    final barcode = await context.push<String>('/scanner');
+    if (!mounted || barcode == null || barcode.trim().isEmpty) return;
+    _serialCtrl.text = barcode.trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoryListProvider);
@@ -105,7 +113,8 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
 
     // Pre-fill form when editing and data is available
     if (_isEditing && !_initialised) {
-      final detailAsync = ref.watch(equipmentDetailProvider(widget.equipmentId!));
+      final detailAsync =
+          ref.watch(equipmentDetailProvider(widget.equipmentId!));
       detailAsync.whenData((equipment) {
         if (!_initialised) {
           _nameCtrl.text = equipment.name;
@@ -152,7 +161,8 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
                 dropdownColor: const Color(0xFF1A1A24),
                 style: const TextStyle(color: Color(0xFFEEEEF5)),
                 items: categories
-                    .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
+                    .map((c) =>
+                        DropdownMenuItem(value: c.id, child: Text(c.name)))
                     .toList(),
                 onChanged: (v) => setState(() => _selectedCategoryId = v),
                 validator: (v) => v == null ? 'Select a category' : null,
@@ -185,11 +195,14 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
               _field(
                 controller: _dailyRateCtrl,
                 label: 'Daily rate (USD) *',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Daily rate is required';
+                  if (v == null || v.trim().isEmpty)
+                    return 'Daily rate is required';
                   final d = double.tryParse(v.trim());
-                  if (d == null || d <= 0) return 'Enter a valid rate greater than 0';
+                  if (d == null || d <= 0)
+                    return 'Enter a valid rate greater than 0';
                   return null;
                 },
               ),
@@ -197,7 +210,14 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
 
               _field(
                 controller: _serialCtrl,
-                label: 'Serial number (optional)',
+                label: 'Physical barcode / serial number (optional)',
+                suffixIcon: _isEditing
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.qr_code_scanner_rounded),
+                        tooltip: 'Scan physical barcode',
+                        onPressed: _scanAssetBarcode,
+                      ),
               ),
               const SizedBox(height: 16),
 
@@ -237,6 +257,7 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
     TextInputType? keyboardType,
     String? Function(String?)? validator,
     int maxLines = 1,
+    Widget? suffixIcon,
   }) {
     return TextFormField(
       controller: controller,
@@ -244,7 +265,7 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
       maxLines: maxLines,
       validator: validator,
       style: const TextStyle(color: Color(0xFFEEEEF5)),
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(labelText: label, suffixIcon: suffixIcon),
     );
   }
 }
