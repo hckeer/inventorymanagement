@@ -58,6 +58,23 @@ export class SupabaseRestClient {
     if (!response.ok) throw new SupabaseRestError(errorMessage(body, response.statusText), response.status);
     return body as T;
   }
+  async count(path: string): Promise<number> {
+    const response = await this.fetchImpl(`${this.baseUrl}/rest/v1/${path}`, {
+      method: "HEAD",
+      headers: {
+        Prefer: "count=exact",
+        apikey: this.serviceRoleKey,
+        Authorization: `Bearer ${this.serviceRoleKey}`,
+      },
+    });
+    if (!response.ok) throw new SupabaseRestError(response.statusText || "Supabase request failed", response.status);
+    const total = response.headers.get("content-range")?.split("/").at(-1);
+    const count = total == null ? NaN : Number(total);
+    if (!Number.isInteger(count) || count < 0) {
+      throw new SupabaseRestError("Supabase did not return a valid count", 502);
+    }
+    return count;
+  }
   async post<T>(table: string, body: Record<string, unknown>): Promise<T> { return this.request<T>(`${table}`, "POST", body); }
   async patch<T>(path: string, body: Record<string, unknown>): Promise<T> { return this.request<T>(path, "PATCH", body); }
   private async request<T>(path: string, method: string, body: Record<string, unknown>): Promise<T> { const response=await this.fetchImpl(`${this.baseUrl}/rest/v1/${path}`,{method,headers:{Accept:"application/json","Content-Type":"application/json",Prefer:"return=representation",apikey:this.serviceRoleKey,Authorization:`Bearer ${this.serviceRoleKey}`},body:JSON.stringify(body)}); const text=await response.text();const parsed=text?safeJson(text):null;if(!response.ok)throw new SupabaseRestError(errorMessage(parsed,response.statusText),response.status);return parsed as T; }

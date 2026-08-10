@@ -14,7 +14,7 @@ const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.stri
 
 export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof import("../middleware/supabase_auth.js").createSupabaseAuthMiddleware>, database: SupabaseRestClient): void {
   app.get("/api/v1/auth/me", auth, (req: SupabaseAuthenticatedRequest, res) => res.json(ok({ id: req.user?.id, email: req.user?.email })));
-  app.get("/api/v1/dashboard/stats", auth, async (_req,res)=>{try{const [active,assets]=await Promise.all([database.get<Array<unknown>>("rentals?status=eq.active&select=id"),database.get<Array<unknown>>("assets?status=eq.available&select=id")]);res.json(ok({active_rentals:active.length,overdue_rentals:0,available_serialized:assets.length}));}catch(error){handleError(res,error);}});
+  app.get("/api/v1/dashboard/stats", auth, async (_req,res)=>{try{const [active,assets]=await Promise.all([database.count("rentals?status=eq.active"),database.count("assets?status=eq.available")]);res.json(ok({active_rentals:active,overdue_rentals:0,available_serialized:assets}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/products", auth, async (_req,res)=>{try{res.json(ok({products:await database.get("products?select=*,stock_balances(*),assets(status)&order=name.asc")}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/products/:id/assets", auth, async (req,res)=>{try{res.json(ok({assets:await database.get(`assets?product_id=eq.${encodeURIComponent(String(req.params.id))}&select=*&order=asset_id.asc`)}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/categories", auth, async (_req,res)=>{try{res.json(ok({categories:await database.get("categories?select=*&order=name.asc")}));}catch(error){handleError(res,error);}});

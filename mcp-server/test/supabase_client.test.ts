@@ -43,4 +43,21 @@ describe("SupabaseRestClient", () => {
       message: "duplicate",
     });
   });
+
+  it("uses a count-only request for dashboard totals", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(null, { status: 200, headers: { "content-range": "0-0/42" } }),
+    );
+    const client = new SupabaseRestClient({
+      url: "https://project.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetchImpl,
+    });
+
+    await expect(client.count("assets?status=eq.available")).resolves.toBe(42);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://project.supabase.co/rest/v1/assets?status=eq.available",
+      expect.objectContaining({ method: "HEAD" }),
+    );
+  });
 });

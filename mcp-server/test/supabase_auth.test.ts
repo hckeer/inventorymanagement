@@ -29,4 +29,28 @@ describe("SupabaseAuthClient", () => {
       }),
     );
   });
+
+  it("shares concurrent and short-lived repeated token validation", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "user-1", email: "staff@example.com" }), {
+        status: 200,
+      }),
+    );
+    const client = new SupabaseAuthClient({
+      url: "https://project.supabase.co",
+      publishableKey: "publishable-key",
+      fetchImpl,
+    });
+
+    await expect(Promise.all([
+      client.getUser("access-token"),
+      client.getUser("access-token"),
+    ])).resolves.toEqual([
+      { id: "user-1", email: "staff@example.com" },
+      { id: "user-1", email: "staff@example.com" },
+    ]);
+    await client.getUser("access-token");
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });

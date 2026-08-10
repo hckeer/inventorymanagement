@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -10,6 +11,7 @@ const _accessTokenKey = 'mcp_access_token';
 const _refreshTokenKey = 'mcp_refresh_token';
 const _expiresAtKey = 'mcp_access_token_expires_at';
 const _refreshWindow = Duration(minutes: 1);
+const _requestTimeout = Duration(seconds: 15);
 
 class McpApiException implements Exception {
   McpApiException(this.code, this.message);
@@ -50,8 +52,18 @@ class McpClient {
 
     if (_memoryToken == null || _memoryToken!.isEmpty) return null;
     final expiry = _memoryTokenExpiry;
-    if (expiry != null && !expiry.isAfter(DateTime.now().add(_refreshWindow))) {
+    final now = DateTime.now();
+    if (expiry != null && !expiry.isAfter(now)) {
       return _refreshSession();
+    }
+    if (expiry != null && !expiry.isAfter(now.add(_refreshWindow))) {
+      try {
+        return await _refreshSession();
+      } on McpApiException {
+        // The current access token is still valid. Keep the warehouse signed in
+        // during a temporary network failure and retry refresh on the next call.
+        return _memoryToken;
+      }
     }
 
     return _memoryToken;
@@ -143,10 +155,14 @@ class McpClient {
             },
             body: jsonEncode({'refresh_token': refreshToken}),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(_requestTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        await clearToken();
-        return null;
+        if (response.statusCode == 400 || response.statusCode == 401) {
+          await clearToken();
+          return null;
+        }
+        throw McpApiException('ERPNEXT_UNAVAILABLE',
+            'Unable to refresh your session. Check your connection and try again.');
       }
       await _saveSession(jsonDecode(response.body) as Map<String, dynamic>);
       return _memoryToken;
@@ -156,7 +172,10 @@ class McpClient {
     } on FormatException {
       await clearToken();
       return null;
-    } catch (_) {
+    } on TimeoutException {
+      throw McpApiException('NETWORK_TIMEOUT',
+          'The server is taking too long to respond. Please try again.');
+    } on http.ClientException {
       throw McpApiException('ERPNEXT_UNAVAILABLE',
           'Unable to refresh your session. Check your connection and try again.');
     }
@@ -178,7 +197,7 @@ class McpClient {
           },
           body: jsonEncode({'email': username, 'password': password}),
         )
-        .timeout(const Duration(seconds: 30));
+        .timeout(_requestTimeout);
     final envelope = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final errorMessage = envelope['msg'] ??
@@ -281,16 +300,25 @@ class McpClient {
       if (apiKey != null && apiKey.isNotEmpty) headers['X-Api-Key'] = apiKey;
       if (extraHeaders != null) headers.addAll(extraHeaders);
 
-      final response = await _http
-          .send(
+      late http.Response response;
+      try {
+        response = await (() async {
+          final streamed = await _http.send(
             http.Request(method, uri)
               ..headers.addAll(headers)
               ..body = body == null ? '' : jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 30));
-      final text = await response.stream
-          .bytesToString()
-          .timeout(const Duration(seconds: 30));
+          );
+          return http.Response.fromStream(streamed);
+        })()
+            .timeout(_requestTimeout);
+      } on TimeoutException {
+        throw McpApiException('NETWORK_TIMEOUT',
+            'The server is taking too long to respond. Please try again.');
+      } on http.ClientException {
+        throw McpApiException('NETWORK_UNAVAILABLE',
+            'Cannot reach the server. Check your connection and try again.');
+      }
+      final text = response.body;
       Map<String, dynamic> payload;
       try {
         payload = jsonDecode(text) as Map<String, dynamic>;
