@@ -62,11 +62,17 @@ class Equipment {
   }
 
   factory Equipment.fromProduct(Map<String, dynamic> json) {
-    final balances = json['stock_balances'] as List<dynamic>? ?? [];
-    final balance = balances.isEmpty ? null : balances.first as Map<String, dynamic>;
+    final rawBalances = json['stock_balances'];
+    final balance = switch (rawBalances) {
+      List<dynamic> rows when rows.isNotEmpty =>
+        rows.first as Map<String, dynamic>,
+      Map<String, dynamic> row => row,
+      _ => null,
+    };
     final tracking = json['tracking_mode'] as String? ?? 'serialized';
     final assetStatuses = (json['assets'] as List<dynamic>? ?? [])
-        .map((asset) => (asset as Map<String, dynamic>)['status'] as String? ?? '')
+        .map((asset) =>
+            (asset as Map<String, dynamic>)['status'] as String? ?? '')
         .toList();
     final availableQuantity = balance == null
         ? 0
@@ -79,7 +85,8 @@ class Equipment {
             ? (availableQuantity > 0 ? 'available' : 'rented')
             : assetStatuses.contains('available')
                 ? 'available'
-                : assetStatuses.contains('rented') || assetStatuses.contains('reserved')
+                : assetStatuses.contains('rented') ||
+                        assetStatuses.contains('reserved')
                     ? 'rented'
                     : assetStatuses.contains('maintenance')
                         ? 'maintenance'
@@ -199,9 +206,7 @@ class Equipment {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Equipment &&
-          runtimeType == other.runtimeType &&
-          id == other.id;
+      other is Equipment && runtimeType == other.runtimeType && id == other.id;
 
   @override
   int get hashCode => id.hashCode;
