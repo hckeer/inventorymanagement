@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/mcp_client.dart';
+import '../../providers/equipment_provider.dart';
 
 class ContainerBuilderScreen extends ConsumerStatefulWidget {
   const ContainerBuilderScreen({super.key});
@@ -176,6 +177,10 @@ class _ContainerBuilderScreenState extends ConsumerState<ContainerBuilderScreen>
       );
 
       if (mounted) {
+        // Both the equipment list and rental form use this provider. Invalidate
+        // it before leaving so the newly-created container is fetched from the
+        // API instead of continuing to show the pre-build cached list.
+        ref.invalidate(equipmentListProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Container linked successfully!'),

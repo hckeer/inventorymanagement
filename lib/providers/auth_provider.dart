@@ -9,11 +9,13 @@ final authRepositoryProvider = Provider<AuthRepository>(
 
 /// True when an MCP access token exists and /auth/me succeeds.
 final authSessionProvider = FutureProvider<bool>((ref) async {
+  ref.watch(authRevisionProvider);
   return ref.read(authRepositoryProvider).hasSession();
 });
 
-final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) {
-  ref.watch(authSessionProvider);
+final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {
+  final isAuthenticated = await ref.watch(authStateProvider.future);
+  if (!isAuthenticated) return null;
   return ref.read(authRepositoryProvider).getCurrentUserProfile();
 });
 
@@ -21,6 +23,5 @@ final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) {
 final authRevisionProvider = StateProvider<int>((ref) => 0);
 
 final authStateProvider = FutureProvider<bool>((ref) {
-  ref.watch(authRevisionProvider);
-  return ref.read(authRepositoryProvider).hasSession();
+  return ref.watch(authSessionProvider.future);
 });

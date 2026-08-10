@@ -41,6 +41,8 @@ class RentalRepository {
     required double depositAmount,
     required bool depositPaid,
     String? notes,
+    List<String> overrideAssetIds = const [],
+    String? overrideReason,
   }) async {
     try {
       final createData = await mcpClient.post('/rentals', body: {
@@ -51,6 +53,8 @@ class RentalRepository {
           'deposit_paid': depositPaid,
           if (notes != null) 'notes': notes,
           'items': lines.map((line) => line.toMcpJson()).toList(),
+          'override_asset_ids': overrideAssetIds,
+          if (overrideReason != null) 'override_reason': overrideReason,
       });
       final rental = createData['rental'] as Map<String, dynamic>?;
       final name = rental?['id'] as String?;
@@ -89,17 +93,41 @@ class RentalRepository {
     }
   }
 
-  Future<void> checkout({required String rentalId}) async {
+  Future<void> checkout({
+    required String rentalId,
+    required List<String> verifiedRentalItemIds,
+    required List<String> parentAssetIds,
+    required String requestId,
+  }) async {
     try {
-      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/checkout');
+      await mcpClient.post(
+        '/rentals/${Uri.encodeComponent(rentalId)}/checkout',
+        headers: {'Idempotency-Key': requestId},
+        body: {
+          'verified_rental_item_ids': verifiedRentalItemIds,
+          'parent_asset_ids': parentAssetIds,
+        },
+      );
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
     }
   }
 
-  Future<void> markReturned({required String rentalId}) async {
+  Future<void> markReturned({
+    required String rentalId,
+    required List<String> verifiedRentalItemIds,
+    required List<Map<String, dynamic>> returnedQuantities,
+    required String requestId,
+  }) async {
     try {
-      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/return');
+      await mcpClient.post(
+        '/rentals/${Uri.encodeComponent(rentalId)}/return',
+        headers: {'Idempotency-Key': requestId},
+        body: {
+          'verified_rental_item_ids': verifiedRentalItemIds,
+          'returned_quantities': returnedQuantities,
+        },
+      );
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
     }

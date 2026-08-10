@@ -96,6 +96,19 @@ describe("rental lifecycle schema", () => {
   });
 });
 
+describe("rental scan reliability schema", () => {
+  it("stores checkout snapshots, idempotency keys, and partial quantity returns", () => {
+    const migration = resolve(migrationsDirectory, reliabilityMigration());
+    const sql = readFileSync(migration, "utf8");
+
+    expect(sql).toMatch(/create table if not exists public\.rental_parent_snapshots/i);
+    expect(sql).toMatch(/create table if not exists public\.inventory_operations/i);
+    expect(sql).toMatch(/returned_quantity integer not null default 0/i);
+    expect(sql).toMatch(/create or replace function public\.confirm_checkout/i);
+    expect(sql).toMatch(/create or replace function public\.confirm_return/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
@@ -110,4 +123,10 @@ function legacyCleanupMigration(): string {
 
 function rentalLifecycleMigration(): string {
   return readdirSync(migrationsDirectory).find((name) => /_rental_lifecycle\.sql$/.test(name)) ?? "";
+}
+
+function reliabilityMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_rental_scan_reliability\.sql$/.test(name),
+  ) ?? "";
 }

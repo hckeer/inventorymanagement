@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
+import 'dart:math';
 import 'package:go_router/go_router.dart';
 import '../../core/mcp_client.dart';
 import '../../models/rental_item.dart';
@@ -34,6 +35,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
 
   // Set of rental item IDs that have been verified.
   final Set<String> _verifiedIds = {};
+  final Map<String, int> _returnedQuantities = {};
+  final String _requestId = _newReturnRequestId();
   
   // Track recently processed barcodes so we don't spam the API
   final Set<String> _recentScans = {};
@@ -90,7 +93,21 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
           if (lookup != null && lookup['result_type'] != 'unknown') {
             final assetId = lookup['asset_id'] as String?;
             final productId = lookup['product_id'] as String?;
-            final children = lookup['children'] as List<dynamic>? ?? [];
+            final children = <dynamic>[...?(lookup['children'] as List<dynamic>?)];
+            if (assetId == null && lookup['tracking_mode'] == 'serialized') {
+              throw McpApiException(
+                'AMBIGUOUS_PRODUCT_BARCODE',
+                'Scan this equipment\'s individual barcode.',
+              );
+            }
+            if (assetId != null) {
+              final snapshotData = await mcpClient.get(
+                '/rentals/${Uri.encodeComponent(widget.rentalId)}/parent-snapshots/${Uri.encodeComponent(assetId)}',
+              );
+              for (final snapshot in snapshotData['snapshots'] as List<dynamic>? ?? []) {
+                children.add({'asset_id': (snapshot as Map<String, dynamic>)['child_asset_id']});
+              }
+            }
             
             int newlyVerifiedCount = 0;
             
@@ -100,7 +117,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                 match = widget.items.where((item) => item.assetId == aId).firstOrNull;
               } else if (pId != null) {
                 match = widget.items.where((item) => 
-                  item.productId == pId && 
+                  item.productId == pId && item.assetId == null &&
                   !_verifiedIds.contains(item.id)
                 ).firstOrNull;
               }
@@ -113,6 +130,15 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
               }
             }
             
+            if (assetId == null && productId != null) {
+              final quantityItem = widget.items.where((item) =>
+                  item.productId == productId && item.assetId == null).firstOrNull;
+              if (quantityItem != null) {
+                await _setReturnedQuantity(quantityItem);
+                return;
+              }
+            }
+
             // Verify parent
             verifyItem(assetId, productId);
             
@@ -165,7 +191,12 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
   Future<void> _handleCheckin() async {
     setState(() => _isCheckingIn = true);
     try {
-      await ref.read(rentalListProvider.notifier).markReturned(widget.rentalId);
+      await ref.read(rentalListProvider.notifier).markReturned(
+        rentalId: widget.rentalId,
+        verifiedRentalItemIds: _verifiedIds.toList(),
+        returnedQuantities: _quantityReturnPayload(),
+        requestId: _requestId,
+      );
       ref.invalidate(rentalDetailProvider(widget.rentalId));
       ref.invalidate(rentalItemsProvider(widget.rentalId));
       ref.invalidate(equipmentListProvider);
@@ -187,7 +218,10 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
 
   @override
   Widget build(BuildContext context) {
-    final allVerified = _verifiedIds.length == widget.items.length;
+    final serializedItems = widget.items.where((item) => item.assetId != null);
+    final quantityItems = widget.items.where((item) => item.assetId == null);
+    final allVerified = serializedItems.every((item) => _verifiedIds.contains(item.id)) &&
+        quantityItems.every((item) => _returnedQuantities.containsKey(item.id));
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
@@ -281,7 +315,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Items (${_verifiedIds.length} / ${widget.items.length})',
+                          'Items (${_verifiedIds.length + _returnedQuantities.length} / ${widget.items.length})',
                           style: const TextStyle(
                             color: Color(0xFFEEEEF5),
                             fontSize: 18,
@@ -297,7 +331,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                       itemCount: widget.items.length,
                       itemBuilder: (context, index) {
                         final item = widget.items[index];
-                        final isVerified = _verifiedIds.contains(item.id);
+                        final isVerified = _verifiedIds.contains(item.id) ||
+                            _returnedQuantities.containsKey(item.id);
                         
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -336,6 +371,16 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                     ),
                   ),
                   
+                  if (quantityItems.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: OutlinedButton.icon(
+                        onPressed: () => _setReturnedQuantity(quantityItems.first),
+                        icon: const Icon(Icons.numbers_rounded),
+                        label: const Text('Set returned quantity'),
+                      ),
+                    ),
+
                   // Return Button
                   Padding(
                     padding: const EdgeInsets.all(20),
@@ -368,4 +413,64 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
       ),
     );
   }
+
+  Future<void> _setReturnedQuantity(RentalItem item) async {
+    final controller = TextEditingController(
+      text: (_returnedQuantities[item.id] ?? item.qty.toInt()).toString(),
+    );
+    final returned = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Returned quantity'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(labelText: 'Out of ${item.qty.toInt()}'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, int.tryParse(controller.text)),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (returned == null) return;
+    if (returned < 0 || returned > item.qty.toInt()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid returned quantity.')));
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() => _returnedQuantities[item.id] = returned);
+      final missing = item.qty.toInt() - returned;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(missing == 0
+            ? 'Returned ${item.qty.toInt()} item(s)'
+            : 'Returned $returned — $missing item(s) missing'),
+        backgroundColor: missing == 0 ? const Color(0xFF4CAF50) : const Color(0xFFE8A838),
+      ));
+    }
+  }
+
+  List<Map<String, dynamic>> _quantityReturnPayload() => widget.items
+      .where((item) => item.assetId == null)
+      .map((item) => {
+            'rental_item_id': item.id,
+            'returned_quantity': _returnedQuantities[item.id] ?? 0,
+          })
+      .toList();
+}
+
+String _newReturnRequestId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }

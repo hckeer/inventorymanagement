@@ -39,6 +39,8 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
     required double depositAmount,
     required bool depositPaid,
     String? notes,
+    List<String> overrideAssetIds = const [],
+    String? overrideReason,
   }) async {
     try {
       final id = await _repo.createAndSubmit(
@@ -49,6 +51,8 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
         depositAmount: depositAmount,
         depositPaid: depositPaid,
         notes: notes,
+        overrideAssetIds: overrideAssetIds,
+        overrideReason: overrideReason,
       );
       ref.invalidateSelf();
       return id;
@@ -70,9 +74,19 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
   }
 
   /// Checks out a reserved rental via RPC and refreshes the list.
-  Future<void> checkout(String rentalId) async {
+  Future<void> checkout({
+    required String rentalId,
+    required List<String> verifiedRentalItemIds,
+    required List<String> parentAssetIds,
+    required String requestId,
+  }) async {
     try {
-      await _repo.checkout(rentalId: rentalId);
+      await _repo.checkout(
+        rentalId: rentalId,
+        verifiedRentalItemIds: verifiedRentalItemIds,
+        parentAssetIds: parentAssetIds,
+        requestId: requestId,
+      );
       ref.invalidateSelf();
     } catch (e, st) {
       state = AsyncError(e, st);
@@ -81,9 +95,19 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
   }
 
   /// Marks a rental as returned via RPC and refreshes the list.
-  Future<void> markReturned(String rentalId) async {
+  Future<void> markReturned({
+    required String rentalId,
+    required List<String> verifiedRentalItemIds,
+    required List<Map<String, dynamic>> returnedQuantities,
+    required String requestId,
+  }) async {
     try {
-      await _repo.markReturned(rentalId: rentalId);
+      await _repo.markReturned(
+        rentalId: rentalId,
+        verifiedRentalItemIds: verifiedRentalItemIds,
+        returnedQuantities: returnedQuantities,
+        requestId: requestId,
+      );
       ref.invalidateSelf();
     } catch (e, st) {
       state = AsyncError(e, st);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
+import 'dart:math';
 import 'package:go_router/go_router.dart';
 import '../../core/mcp_client.dart';
 import '../../models/rental_item.dart';
@@ -34,6 +35,8 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
 
   // Set of rental item IDs that have been verified.
   final Set<String> _verifiedIds = {};
+  final Set<String> _scannedParentAssetIds = {};
+  final String _requestId = _newRequestId();
   
   // Track recently processed barcodes so we don't spam the API
   final Set<String> _recentScans = {};
@@ -91,6 +94,15 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
             final assetId = lookup['asset_id'] as String?;
             final productId = lookup['product_id'] as String?;
             final children = lookup['children'] as List<dynamic>? ?? [];
+            if (assetId == null && lookup['tracking_mode'] == 'serialized') {
+              throw McpApiException(
+                'AMBIGUOUS_PRODUCT_BARCODE',
+                'Scan this equipment\'s individual barcode.',
+              );
+            }
+            if (assetId != null && children.isNotEmpty) {
+              _scannedParentAssetIds.add(assetId);
+            }
             
             int newlyVerifiedCount = 0;
             
@@ -100,7 +112,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                 match = widget.items.where((item) => item.assetId == aId).firstOrNull;
               } else if (pId != null) {
                 match = widget.items.where((item) => 
-                  item.productId == pId && 
+                  item.productId == pId && item.assetId == null &&
                   !_verifiedIds.contains(item.id)
                 ).firstOrNull;
               }
@@ -165,7 +177,12 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
   Future<void> _handleCheckout() async {
     setState(() => _isCheckingOut = true);
     try {
-      await ref.read(rentalListProvider.notifier).checkout(widget.rentalId);
+      await ref.read(rentalListProvider.notifier).checkout(
+        rentalId: widget.rentalId,
+        verifiedRentalItemIds: _verifiedIds.toList(),
+        parentAssetIds: _scannedParentAssetIds.toList(),
+        requestId: _requestId,
+      );
       ref.invalidate(rentalDetailProvider(widget.rentalId));
       ref.invalidate(rentalItemsProvider(widget.rentalId));
       ref.invalidate(equipmentListProvider);
@@ -368,4 +385,13 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
       ),
     );
   }
+}
+
+String _newRequestId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }

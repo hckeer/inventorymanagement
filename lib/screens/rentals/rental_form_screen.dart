@@ -9,6 +9,7 @@ import '../../models/client.dart';
 import '../../models/equipment.dart';
 import '../../models/equipment_detail.dart';
 import '../../models/rental_line_input.dart';
+import '../../core/mcp_client.dart';
 import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/app_error.dart';
@@ -29,10 +30,11 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   bool _depositPaid = false;
   final _notesCtrl = TextEditingController();
   final _depositCtrl = TextEditingController(text: '0');
+  final Set<String> _overrideAssetIds = {};
+  String? _overrideReason;
   bool _loading = false;
 
-  int get _rentalDays =>
-      _endDate.difference(_startDate).inDays.clamp(1, 9999);
+  int get _rentalDays => _endDate.difference(_startDate).inDays.clamp(1, 9999);
 
   double get _estimatedTotal => _lines.fold(
       0,
@@ -77,6 +79,144 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
         _endDate = picked;
       }
     });
+  }
+
+  /// Scans one physical asset or a container. Containers expand into their
+  /// parent and child assets, so every piece is reserved by this rental.
+  Future<void> _scanRentalLine(
+    List<Equipment> equipment,
+    List<Equipment> qtyItems,
+  ) async {
+    final barcode = await context.push<String>('/scanner');
+    if (barcode == null || !mounted) return;
+
+    try {
+      final data =
+          await mcpClient.get('/barcodes/${Uri.encodeComponent(barcode)}');
+      if (!mounted) return;
+      final lookup = data['lookup'] as Map<String, dynamic>?;
+      if (lookup == null || lookup['result_type'] == 'unknown') {
+        _showError('This barcode is not registered as equipment.');
+        return;
+      }
+      if (lookup['result_type'] == 'product') {
+        if (lookup['tracking_mode'] != 'quantity') {
+          _showError('Scan the physical serial barcode for this equipment.');
+          return;
+        }
+        final productId = lookup['product_id'] as String?;
+        final product =
+            equipment.where((item) => item.id == productId).firstOrNull;
+        if (product == null) {
+          _showError(
+              'Scanned equipment is no longer available. Refresh and try again.');
+          return;
+        }
+        await _addQtyLine(qtyItems, initialItem: product);
+        return;
+      }
+
+      final assets = <Map<String, dynamic>>[
+        {
+          'asset_id': lookup['asset_id'],
+          'product_id': lookup['product_id'],
+          'barcode': barcode,
+          'status': lookup['asset_status'],
+        },
+        ...((lookup['children'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()),
+      ];
+
+      final additions = <RentalLineInput>[];
+      for (final asset in assets) {
+        final assetId = asset['asset_id'] as String?;
+        final productId = asset['product_id'] as String?;
+        if (assetId == null || productId == null) continue;
+        final status = asset['status'] as String?;
+        if (status != null && status != 'available') {
+          if (status != 'maintenance' && status != 'retired') {
+            _showError('This item is $status and cannot be overridden.');
+            return;
+          }
+          final reason = await _confirmPhysicalAvailability(status);
+          if (reason == null) return;
+          _overrideAssetIds.add(assetId);
+          _overrideReason = reason;
+        }
+        if (_lines.any((line) => line.assetId == assetId) ||
+            additions.any((line) => line.assetId == assetId)) {
+          continue;
+        }
+        final product =
+            equipment.where((item) => item.id == productId).firstOrNull;
+        if (product == null) {
+          _showError(
+              'Scanned equipment is no longer available. Refresh and try again.');
+          return;
+        }
+        additions.add(RentalLineInput(
+          lineType: 'serialized',
+          itemCode: productId,
+          itemName: product.name,
+          serialNo: asset['barcode'] as String? ?? barcode,
+          assetId: assetId,
+          qty: 1,
+          dailyRate: product.dailyRate,
+        ));
+      }
+
+      if (additions.isEmpty) {
+        _showError('This equipment is already in the rental.');
+        return;
+      }
+      setState(() => _lines.addAll(additions));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          additions.length == 1
+              ? 'Equipment added'
+              : 'Container added with ${additions.length - 1} item(s)',
+        ),
+        backgroundColor: const Color(0xFF4CAF50),
+      ));
+    } on McpApiException catch (error) {
+      _showError(error.message);
+    } catch (_) {
+      _showError('Could not add the scanned equipment. Try again.');
+    }
+  }
+
+  Future<String?> _confirmPhysicalAvailability(String status) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Inventory conflict'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Database status is "$status", but the item was physically scanned.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Reason for override'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              Navigator.pop(dialogContext, value.isEmpty ? null : value);
+            },
+            child: const Text('Physically available'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return reason;
   }
 
   Future<void> _addSerializedLine(List<Equipment> serializedItems) async {
@@ -130,8 +270,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                           .read(equipmentRepositoryProvider)
                           .getDetail(id: selectedItem!.id),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState !=
-                            ConnectionState.done) {
+                        if (snapshot.connectionState != ConnectionState.done) {
                           return const Padding(
                             padding: EdgeInsets.all(12),
                             child: CircularProgressIndicator(strokeWidth: 2),
@@ -174,7 +313,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (value) => setDialogState(() => selectedSerial = value),
+                          onChanged: (value) =>
+                              setDialogState(() => selectedSerial = value),
                         );
                       },
                     ),
@@ -218,13 +358,16 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<void> _addQtyLine(List<Equipment> qtyItems) async {
+  Future<void> _addQtyLine(
+    List<Equipment> qtyItems, {
+    Equipment? initialItem,
+  }) async {
     if (qtyItems.isEmpty) {
       _showError('No qty items available');
       return;
     }
 
-    Equipment? selectedItem;
+    Equipment? selectedItem = initialItem;
     double qty = 1;
 
     final added = await showDialog<bool>(
@@ -253,7 +396,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         ),
                       )
                       .toList(),
-                  onChanged: (item) => setDialogState(() => selectedItem = item),
+                  onChanged: (item) =>
+                      setDialogState(() => selectedItem = item),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -264,9 +408,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
                       color: const Color(0xFF9999AA),
-                      onPressed: qty > 1
-                          ? () => setDialogState(() => qty -= 1)
-                          : null,
+                      onPressed:
+                          qty > 1 ? () => setDialogState(() => qty -= 1) : null,
                     ),
                     Text(
                       qty.toStringAsFixed(0),
@@ -343,6 +486,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 notes: _notesCtrl.text.trim().isEmpty
                     ? null
                     : _notesCtrl.text.trim(),
+                overrideAssetIds: _overrideAssetIds.toList(),
+                overrideReason: _overrideReason,
               );
 
       ref.invalidate(equipmentListProvider);
@@ -438,12 +583,26 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         label: const Text('Qty line'),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () =>
+                            _scanRentalLine(allEquipment, qtyItems),
+                        icon:
+                            const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                        label: const Text('Scan'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE8A838),
+                          foregroundColor: const Color(0xFF0F0F13),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 if (_lines.isEmpty)
                   const Text(
-                    'Add serialized equipment (barcode) or qty items (sandbags, etc.).',
+                    'Add items manually or scan an item/container barcode.',
                     style: TextStyle(color: Color(0xFF9999AA), fontSize: 13),
                   )
                 else
@@ -744,9 +903,8 @@ class _SummaryRow extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: highlight
-                  ? const Color(0xFFE8A838)
-                  : const Color(0xFFEEEEF5),
+              color:
+                  highlight ? const Color(0xFFE8A838) : const Color(0xFFEEEEF5),
               fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
               fontSize: highlight ? 15 : 13,
             ),
