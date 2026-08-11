@@ -118,6 +118,16 @@ describe("serialized asset creation schema", () => {
   });
 });
 
+describe("quick checkout schema", () => {
+  it("creates and checks out a scanned rental in one database function", () => {
+    const migration = readFileSync(resolve(migrationsDirectory, quickCheckoutMigration()), "utf8");
+    expect(migration).toMatch(/create function public\.create_and_checkout_rental/i);
+    expect(migration).toMatch(/public\.create_rental/i);
+    expect(migration).toMatch(/public\.confirm_checkout/i);
+    expect(migration).toMatch(/where request_id = p_request_id/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
@@ -143,5 +153,11 @@ function reliabilityMigration(): string {
 function serializedAssetMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_create_serialized_product_with_asset\.sql$/.test(name),
+  ) ?? "";
+}
+
+function quickCheckoutMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_create_and_checkout_rental\.sql$/.test(name),
   ) ?? "";
 }

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,9 +16,25 @@ import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/app_error.dart';
 
+String _newQuickCheckoutRequestId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex =
+      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
 class RentalFormScreen extends ConsumerStatefulWidget {
-  const RentalFormScreen({super.key, required this.rentalId});
+  const RentalFormScreen({
+    super.key,
+    required this.rentalId,
+    this.quickCheckout = false,
+  });
   final String? rentalId;
+  final bool quickCheckout;
 
   @override
   ConsumerState<RentalFormScreen> createState() => _RentalFormScreenState();
@@ -31,6 +49,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   final _notesCtrl = TextEditingController();
   final _depositCtrl = TextEditingController(text: '0');
   final Set<String> _overrideAssetIds = {};
+  final Set<String> _parentAssetIds = {};
+  final String _quickCheckoutRequestId = _newQuickCheckoutRequestId();
   String? _overrideReason;
   bool _loading = false;
 
@@ -126,6 +146,10 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
         ...((lookup['children'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()),
       ];
+      if ((lookup['asset_id'] as String?) != null &&
+          (lookup['children'] as List<dynamic>? ?? []).isNotEmpty) {
+        _parentAssetIds.add(lookup['asset_id'] as String);
+      }
 
       final additions = <RentalLineInput>[];
       for (final asset in assets) {
@@ -475,8 +499,23 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
     setState(() => _loading = true);
     try {
-      final rentalId =
-          await ref.read(rentalListProvider.notifier).createAndSubmit(
+      final rentalId = widget.quickCheckout
+          ? await ref.read(rentalListProvider.notifier).createAndCheckout(
+              clientId: _selectedClient!.id,
+              startDate: _startDate,
+              endDate: _endDate,
+              lines: _lines,
+              depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
+              depositPaid: _depositPaid,
+              parentAssetIds: _parentAssetIds.toList(),
+              requestId: _quickCheckoutRequestId,
+              notes: _notesCtrl.text.trim().isEmpty
+                  ? null
+                  : _notesCtrl.text.trim(),
+              overrideAssetIds: _overrideAssetIds.toList(),
+              overrideReason: _overrideReason,
+            )
+          : await ref.read(rentalListProvider.notifier).createAndSubmit(
                 clientId: _selectedClient!.id,
                 startDate: _startDate,
                 endDate: _endDate,
@@ -518,7 +557,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Rental'),
+        title: Text(widget.quickCheckout ? 'Quick Checkout' : 'New Rental'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
@@ -771,7 +810,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                               color: Color(0xFF0F0F13),
                             ),
                           )
-                        : const Text('Create rental'),
+                        : Text(widget.quickCheckout ? 'Confirm checkout' : 'Create rental'),
                   ),
                 ),
                 const SizedBox(height: 40),

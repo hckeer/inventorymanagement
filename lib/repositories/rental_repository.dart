@@ -75,6 +75,46 @@ class RentalRepository {
     }
   }
 
+  Future<String> createAndCheckout({
+    required String clientId,
+    required DateTime startDate,
+    required DateTime endDate,
+    required List<RentalLineInput> lines,
+    required double depositAmount,
+    required bool depositPaid,
+    required List<String> parentAssetIds,
+    required String requestId,
+    String? notes,
+    List<String> overrideAssetIds = const [],
+    String? overrideReason,
+  }) async {
+    try {
+      final data = await mcpClient.post(
+        '/rentals/quick-checkout',
+        headers: {'Idempotency-Key': requestId},
+        body: {
+          'client_id': clientId,
+          'start_date': _formatDate(startDate),
+          'end_date': _formatDate(endDate),
+          'deposit_amount': depositAmount,
+          'deposit_paid': depositPaid,
+          if (notes != null) 'notes': notes,
+          'items': lines.map((line) => line.toMcpJson()).toList(),
+          'parent_asset_ids': parentAssetIds,
+          'override_asset_ids': overrideAssetIds,
+          if (overrideReason != null) 'override_reason': overrideReason,
+        },
+      );
+      final id = (data['rental'] as Map<String, dynamic>?)?['id'] as String?;
+      if (id == null || id.isEmpty) {
+        throw Exception('Quick checkout did not return a rental.');
+      }
+      return id;
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
   Future<Rental> update(
       {required Rental rental, List<RentalLineInput>? lines}) async {
     try {

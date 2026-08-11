@@ -161,6 +161,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                     const RentalFormScreen(rentalId: null),
               ),
               GoRoute(
+                path: 'quick-checkout',
+                builder: (context, state) =>
+                    const RentalFormScreen(rentalId: null, quickCheckout: true),
+              ),
+              GoRoute(
                 path: ':id',
                 builder: (context, state) =>
                     RentalDetailScreen(id: state.pathParameters['id']!),
