@@ -168,7 +168,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'new',
                 builder: (context, state) =>
-                    const RentalFormScreen(rentalId: null),
+                    const RentalFormScreen(rentalId: null, quickCheckout: true),
               ),
               GoRoute(
                 path: 'quick-checkout',

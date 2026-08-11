@@ -570,7 +570,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.quickCheckout ? 'Quick Checkout' : 'New Rental'),
+        title: const Text('New Rental'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
