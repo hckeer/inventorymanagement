@@ -47,21 +47,15 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedCategoryId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a category')),
-      );
-      return;
-    }
 
     setState(() => _loading = true);
     try {
       final equipment = Equipment(
         id: widget.equipmentId ?? '',
         name: _nameCtrl.text.trim(),
-        categoryId: _selectedCategoryId!,
+        categoryId: _selectedCategoryId ?? '',
         status: _status,
-        dailyRate: double.parse(_dailyRateCtrl.text.trim()),
+        dailyRate: double.tryParse(_dailyRateCtrl.text.trim()) ?? 0,
         serialNo:
             _serialCtrl.text.trim().isEmpty ? null : _serialCtrl.text.trim(),
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
@@ -157,7 +151,8 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
               // Category dropdown
               DropdownButtonFormField<String>(
                 value: _selectedCategoryId,
-                decoration: const InputDecoration(labelText: 'Category *'),
+                decoration:
+                    const InputDecoration(labelText: 'Category (optional)'),
                 dropdownColor: const Color(0xFF1A1A24),
                 style: const TextStyle(color: Color(0xFFEEEEF5)),
                 items: categories
@@ -165,7 +160,6 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
                         DropdownMenuItem(value: c.id, child: Text(c.name)))
                     .toList(),
                 onChanged: (v) => setState(() => _selectedCategoryId = v),
-                validator: (v) => v == null ? 'Select a category' : null,
               ),
               const SizedBox(height: 16),
 
@@ -194,15 +188,13 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
 
               _field(
                 controller: _dailyRateCtrl,
-                label: 'Daily rate (USD) *',
+                label: 'Daily rate (USD, optional)',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty)
-                    return 'Daily rate is required';
+                  if (v == null || v.trim().isEmpty) return null;
                   final d = double.tryParse(v.trim());
-                  if (d == null || d <= 0)
-                    return 'Enter a valid rate greater than 0';
+                  if (d == null || d < 0) return 'Enter a valid rate';
                   return null;
                 },
               ),

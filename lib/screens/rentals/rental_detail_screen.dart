@@ -19,6 +19,7 @@ class RentalDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rentalAsync = ref.watch(rentalDetailProvider(id));
     final itemsAsync = ref.watch(rentalItemsProvider(id));
+    final manifestAsync = ref.watch(rentalManifestProvider(id));
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -70,7 +71,8 @@ class RentalDetailScreen extends ConsumerWidget {
                   Row(
                     children: [
                       _DateChip(
-                          label: 'Start', date: rental.startDate.toDisplayDate()),
+                          label: 'Start',
+                          date: rental.startDate.toDisplayDate()),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 8),
                         child: Icon(Icons.arrow_forward_rounded,
@@ -119,9 +121,7 @@ class RentalDetailScreen extends ConsumerWidget {
                     Text(
                       rental.notes!,
                       style: const TextStyle(
-                          color: Color(0xFF9999AA),
-                          fontSize: 13,
-                          height: 1.5),
+                          color: Color(0xFF9999AA), fontSize: 13, height: 1.5),
                     ),
                   ],
                 ],
@@ -168,21 +168,32 @@ class RentalDetailScreen extends ConsumerWidget {
                     backgroundColor: const Color(0xFFE8A838),
                     foregroundColor: const Color(0xFF0F0F13),
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: itemsAsync.valueOrNull?.isNotEmpty == true ? () {
-                    final items = itemsAsync.valueOrNull!;
-                    context.push('/checkout-scanner', extra: {
-                      'rentalId': id,
-                      'items': items,
-                    });
-                  } : null,
+                  onPressed: (manifestAsync.valueOrNull?.isNotEmpty == true ||
+                          itemsAsync.valueOrNull?.isNotEmpty == true)
+                      ? () {
+                          final manifest = manifestAsync.valueOrNull;
+                          if (manifest != null && manifest.isNotEmpty) {
+                            context.push('/manifest-return',
+                                extra: {'rentalId': id, 'barcodes': manifest});
+                            return;
+                          }
+                          final items = itemsAsync.valueOrNull!;
+                          context.push('/checkout-scanner', extra: {
+                            'rentalId': id,
+                            'items': items,
+                          });
+                        }
+                      : null,
                 ),
               ),
             ],
 
             // ── Return via Scanner ──────────────────────────────────────
-            if (rental.status == kRentalStatusActive || rental.status == kRentalStatusOverdue) ...[
+            if (rental.status == kRentalStatusActive ||
+                rental.status == kRentalStatusOverdue) ...[
               const SizedBox(height: 28),
               SizedBox(
                 width: double.infinity,
@@ -193,15 +204,18 @@ class RentalDetailScreen extends ConsumerWidget {
                     backgroundColor: const Color(0xFF4CAF50),
                     foregroundColor: const Color(0xFF0F0F13),
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: itemsAsync.valueOrNull?.isNotEmpty == true ? () {
-                    final items = itemsAsync.valueOrNull!;
-                    context.push('/checkin-scanner', extra: {
-                      'rentalId': id,
-                      'items': items,
-                    });
-                  } : null,
+                  onPressed: itemsAsync.valueOrNull?.isNotEmpty == true
+                      ? () {
+                          final items = itemsAsync.valueOrNull!;
+                          context.push('/checkin-scanner', extra: {
+                            'rentalId': id,
+                            'items': items,
+                          });
+                        }
+                      : null,
                 ),
               ),
             ],
@@ -240,8 +254,7 @@ class _ClientSection extends ConsumerWidget {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor:
-                  const Color(0xFFE8A838).withValues(alpha: 0.12),
+              backgroundColor: const Color(0xFFE8A838).withValues(alpha: 0.12),
               child: Text(
                 client.fullName.isNotEmpty
                     ? client.fullName[0].toUpperCase()
@@ -281,8 +294,7 @@ class _EquipmentItemTile extends ConsumerStatefulWidget {
   final String rentalId;
 
   @override
-  ConsumerState<_EquipmentItemTile> createState() =>
-      _EquipmentItemTileState();
+  ConsumerState<_EquipmentItemTile> createState() => _EquipmentItemTileState();
 }
 
 class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
@@ -354,8 +366,7 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
               ),
               Text(
                 item.dailyRateSnapshot.toCurrency() + '/day',
-                style:
-                    const TextStyle(color: Color(0xFFE8A838), fontSize: 12),
+                style: const TextStyle(color: Color(0xFFE8A838), fontSize: 12),
               ),
             ],
           ),
@@ -389,8 +400,8 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
                         onPressed: _saveDamageNotes,
                       ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded,
-                      color: Color(0xFF9999AA)),
+                  icon:
+                      const Icon(Icons.close_rounded, color: Color(0xFF9999AA)),
                   onPressed: () => setState(() => _editingDamage = false),
                 ),
               ],
@@ -437,8 +448,7 @@ class _DateChip extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style:
-                const TextStyle(color: Color(0xFF9999AA), fontSize: 10)),
+            style: const TextStyle(color: Color(0xFF9999AA), fontSize: 10)),
         Text(date,
             style: const TextStyle(
                 color: Color(0xFFEEEEF5),

@@ -50,6 +50,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   final _depositCtrl = TextEditingController(text: '0');
   final Set<String> _overrideAssetIds = {};
   final Set<String> _parentAssetIds = {};
+  final Set<String> _scannedBarcodes = {};
   final String _quickCheckoutRequestId = _newQuickCheckoutRequestId();
   String? _overrideReason;
   bool _loading = false;
@@ -109,6 +110,15 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   ) async {
     final barcode = await context.push<String>('/scanner');
     if (barcode == null || !mounted) return;
+    if (widget.quickCheckout) {
+      final added = _scannedBarcodes.add(barcode.trim());
+      if (!added) {
+        _showError('This barcode is already in the scan list.');
+        return;
+      }
+      setState(() {});
+      return;
+    }
 
     try {
       final data =
@@ -218,17 +228,21 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Database status is "$status", but the item was physically scanned.'),
+            Text(
+                'Database status is "$status", but the item was physically scanned.'),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               autofocus: true,
-              decoration: const InputDecoration(labelText: 'Reason for override'),
+              decoration:
+                  const InputDecoration(labelText: 'Reason for override'),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
               final value = controller.text.trim();
@@ -488,8 +502,10 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       _showError('Select a client');
       return;
     }
-    if (_lines.isEmpty) {
-      _showError('Add at least one rental line');
+    if (widget.quickCheckout ? _scannedBarcodes.isEmpty : _lines.isEmpty) {
+      _showError(widget.quickCheckout
+          ? 'Scan at least one item'
+          : 'Add at least one rental line');
       return;
     }
     if (_endDate.isBefore(_startDate)) {
@@ -500,21 +516,18 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     setState(() => _loading = true);
     try {
       final rentalId = widget.quickCheckout
-          ? await ref.read(rentalListProvider.notifier).createAndCheckout(
-              clientId: _selectedClient!.id,
-              startDate: _startDate,
-              endDate: _endDate,
-              lines: _lines,
-              depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
-              depositPaid: _depositPaid,
-              parentAssetIds: _parentAssetIds.toList(),
-              requestId: _quickCheckoutRequestId,
-              notes: _notesCtrl.text.trim().isEmpty
-                  ? null
-                  : _notesCtrl.text.trim(),
-              overrideAssetIds: _overrideAssetIds.toList(),
-              overrideReason: _overrideReason,
-            )
+          ? await ref.read(rentalListProvider.notifier).createManifestCheckout(
+                clientId: _selectedClient!.id,
+                startDate: _startDate,
+                endDate: _endDate,
+                barcodes: _scannedBarcodes.toList(),
+                depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
+                depositPaid: _depositPaid,
+                requestId: _quickCheckoutRequestId,
+                notes: _notesCtrl.text.trim().isEmpty
+                    ? null
+                    : _notesCtrl.text.trim(),
+              )
           : await ref.read(rentalListProvider.notifier).createAndSubmit(
                 clientId: _selectedClient!.id,
                 startDate: _startDate,
@@ -603,25 +616,32 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   onChanged: (c) => setState(() => _selectedClient = c),
                 ),
                 const SizedBox(height: 24),
-                _StepHeader(number: '2', title: 'Rental lines'),
+                _StepHeader(
+                    number: '2',
+                    title: widget.quickCheckout
+                        ? 'Scan items going out'
+                        : 'Rental lines'),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _addSerializedLine(serializedItems),
-                        icon: const Icon(Icons.qr_code, size: 18),
-                        label: const Text('Serial line'),
+                    if (!widget.quickCheckout)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _addSerializedLine(serializedItems),
+                          icon: const Icon(Icons.qr_code, size: 18),
+                          label: const Text('Serial line'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _addQtyLine(qtyItems),
-                        icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                        label: const Text('Qty line'),
+                    if (!widget.quickCheckout) const SizedBox(width: 8),
+                    if (!widget.quickCheckout)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _addQtyLine(qtyItems),
+                          icon:
+                              const Icon(Icons.inventory_2_outlined, size: 18),
+                          label: const Text('Qty line'),
+                        ),
                       ),
-                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
@@ -639,7 +659,14 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (_lines.isEmpty)
+                if (widget.quickCheckout && _scannedBarcodes.isNotEmpty)
+                  ..._scannedBarcodes.map((barcode) => ListTile(
+                      title: Text(barcode),
+                      trailing: IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => setState(
+                              () => _scannedBarcodes.remove(barcode)))))
+                else if (_lines.isEmpty)
                   const Text(
                     'Add items manually or scan an item/container barcode.',
                     style: TextStyle(color: Color(0xFF9999AA), fontSize: 13),
@@ -765,7 +792,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     labelText: 'Notes (optional)',
                   ),
                 ),
-                if (_lines.isNotEmpty) ...[
+                if (widget.quickCheckout
+                    ? _scannedBarcodes.isNotEmpty
+                    : _lines.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -785,7 +814,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         ),
                         _SummaryRow(
                           label: 'Lines',
-                          value: '${_lines.length}',
+                          value:
+                              '${widget.quickCheckout ? _scannedBarcodes.length : _lines.length}',
                         ),
                         _SummaryRow(
                           label: 'Est. total',
@@ -810,7 +840,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                               color: Color(0xFF0F0F13),
                             ),
                           )
-                        : Text(widget.quickCheckout ? 'Confirm checkout' : 'Create rental'),
+                        : Text(widget.quickCheckout
+                            ? 'Confirm checkout'
+                            : 'Create rental'),
                   ),
                 ),
                 const SizedBox(height: 40),

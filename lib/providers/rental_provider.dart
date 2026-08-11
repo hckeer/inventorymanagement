@@ -97,6 +97,44 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
     }
   }
 
+  Future<String> createManifestCheckout({
+    required String clientId,
+    required DateTime startDate,
+    required DateTime endDate,
+    required List<String> barcodes,
+    required double depositAmount,
+    required bool depositPaid,
+    required String requestId,
+    String? notes,
+  }) async {
+    try {
+      final id = await _repo.createManifestCheckout(
+          clientId: clientId,
+          startDate: startDate,
+          endDate: endDate,
+          barcodes: barcodes,
+          depositAmount: depositAmount,
+          depositPaid: depositPaid,
+          requestId: requestId,
+          notes: notes);
+      ref.invalidateSelf();
+      return id;
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+
+  Future<List<String>> returnManifest(
+      {required String rentalId,
+      required List<String> barcodes,
+      required String requestId}) async {
+    final result = await _repo.returnManifest(
+        rentalId: rentalId, barcodes: barcodes, requestId: requestId);
+    ref.invalidateSelf();
+    return result;
+  }
+
   /// Updates rental details and refreshes.
   Future<void> updateRental(Rental rental) async {
     try {
@@ -178,3 +216,5 @@ final rentalItemsProvider =
     Error.throwWithStackTrace(e, st);
   }
 });
+final rentalManifestProvider = FutureProvider.family<List<String>, String>(
+    (ref, id) => ref.read(rentalRepositoryProvider).getManifest(id));

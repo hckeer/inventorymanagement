@@ -115,6 +115,54 @@ class RentalRepository {
     }
   }
 
+  Future<String> createManifestCheckout({
+    required String clientId,
+    required DateTime startDate,
+    required DateTime endDate,
+    required List<String> barcodes,
+    required double depositAmount,
+    required bool depositPaid,
+    required String requestId,
+    String? notes,
+  }) async {
+    final data = await mcpClient.post('/rentals/manifest-checkout', headers: {
+      'Idempotency-Key': requestId
+    }, body: {
+      'client_id': clientId,
+      'start_date': _formatDate(startDate),
+      'end_date': _formatDate(endDate),
+      'deposit_amount': depositAmount,
+      'deposit_paid': depositPaid,
+      'barcodes': barcodes,
+      if (notes != null) 'notes': notes,
+    });
+    final id = (data['rental'] as Map<String, dynamic>?)?['id'] as String?;
+    if (id == null || id.isEmpty)
+      throw Exception('Scan checkout did not return a rental.');
+    return id;
+  }
+
+  Future<List<String>> returnManifest(
+      {required String rentalId,
+      required List<String> barcodes,
+      required String requestId}) async {
+    final data = await mcpClient.post(
+        '/rentals/${Uri.encodeComponent(rentalId)}/manifest-return',
+        headers: {'Idempotency-Key': requestId},
+        body: {'barcodes': barcodes});
+    return (data['missing_barcodes'] as List<dynamic>? ?? [])
+        .whereType<String>()
+        .toList();
+  }
+
+  Future<List<String>> getManifest(String rentalId) async {
+    final data = await mcpClient
+        .get('/rentals/${Uri.encodeComponent(rentalId)}/scanned-items');
+    return (data['items'] as List<dynamic>? ?? [])
+        .map((x) => (x as Map<String, dynamic>)['barcode'] as String)
+        .toList();
+  }
+
   Future<Rental> update(
       {required Rental rental, List<RentalLineInput>? lines}) async {
     try {

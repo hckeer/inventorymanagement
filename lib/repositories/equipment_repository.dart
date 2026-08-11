@@ -65,7 +65,8 @@ class EquipmentRepository {
     try {
       final body = <String, dynamic>{
         'name': equipment.name,
-        'category_id': equipment.categoryId,
+        'category_id':
+            equipment.categoryId.isEmpty ? null : equipment.categoryId,
         'notes': equipment.notes,
         'tracking_mode': equipment.hasSerialNo ? 'serialized' : 'quantity',
         'daily_rate': equipment.dailyRate,
@@ -95,7 +96,8 @@ class EquipmentRepository {
         '/products/${Uri.encodeComponent(equipment.id)}',
         body: {
           'name': equipment.name,
-          'category_id': equipment.categoryId,
+          'category_id':
+              equipment.categoryId.isEmpty ? null : equipment.categoryId,
           'notes': equipment.notes,
           'daily_rate': equipment.dailyRate,
         },

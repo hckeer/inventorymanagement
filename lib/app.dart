@@ -12,6 +12,7 @@ import 'screens/equipment/container_builder_screen.dart';
 import 'screens/equipment/scanner_screen.dart';
 import 'screens/rentals/checkout_scanner_screen.dart';
 import 'screens/rentals/checkin_scanner_screen.dart';
+import 'screens/rentals/manifest_return_scanner_screen.dart';
 import 'models/rental_item.dart';
 import 'screens/clients/client_list_screen.dart';
 import 'screens/clients/client_detail_screen.dart';
@@ -47,6 +48,15 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       // ── Auth ──────────────────────────────────────────────────────────────
+      GoRoute(
+        path: '/manifest-return',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return ManifestReturnScannerScreen(
+              rentalId: extra['rentalId'] as String,
+              barcodes: extra['barcodes'] as List<String>);
+        },
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
@@ -209,10 +219,30 @@ class _AppShell extends StatelessWidget {
   final Widget child;
 
   static const _tabs = [
-    (icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded, label: 'Dashboard', path: '/dashboard'),
-    (icon: Icons.videocam_outlined, activeIcon: Icons.videocam_rounded, label: 'Equipment', path: '/equipment'),
-    (icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Clients', path: '/clients'),
-    (icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long_rounded, label: 'Rentals', path: '/rentals'),
+    (
+      icon: Icons.dashboard_outlined,
+      activeIcon: Icons.dashboard_rounded,
+      label: 'Dashboard',
+      path: '/dashboard'
+    ),
+    (
+      icon: Icons.videocam_outlined,
+      activeIcon: Icons.videocam_rounded,
+      label: 'Equipment',
+      path: '/equipment'
+    ),
+    (
+      icon: Icons.people_outline_rounded,
+      activeIcon: Icons.people_rounded,
+      label: 'Clients',
+      path: '/clients'
+    ),
+    (
+      icon: Icons.receipt_long_outlined,
+      activeIcon: Icons.receipt_long_rounded,
+      label: 'Rentals',
+      path: '/rentals'
+    ),
   ];
 
   int _selectedIndex(BuildContext context) {
@@ -232,11 +262,13 @@ class _AppShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: idx,
         onDestinationSelected: (i) => context.go(_tabs[i].path),
-        destinations: _tabs.map((tab) => NavigationDestination(
-          icon: Icon(tab.icon),
-          selectedIcon: Icon(tab.activeIcon),
-          label: tab.label,
-        )).toList(),
+        destinations: _tabs
+            .map((tab) => NavigationDestination(
+                  icon: Icon(tab.icon),
+                  selectedIcon: Icon(tab.activeIcon),
+                  label: tab.label,
+                ))
+            .toList(),
       ),
     );
   }
