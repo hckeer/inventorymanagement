@@ -7,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import '../../providers/rental_provider.dart';
 import '../../providers/client_provider.dart';
 import '../../providers/equipment_provider.dart';
+import '../../providers/category_provider.dart';
 import '../../models/client.dart';
+import '../../models/category.dart';
 import '../../models/equipment.dart';
 import '../../models/equipment_detail.dart';
 import '../../models/rental_line_input.dart';
@@ -101,7 +103,13 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       if (!mounted) return;
       final lookup = data['lookup'] as Map<String, dynamic>?;
       if (lookup == null || lookup['result_type'] == 'unknown') {
-        _showError('This barcode is not registered as equipment.');
+        final line = await _registerUnknownQr(barcode);
+        if (!mounted || line == null) return;
+        setState(() => _lines.add(line));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('New serialized item added to inventory and rental'),
+          backgroundColor: Color(0xFF4CAF50),
+        ));
         return;
       }
       if (lookup['result_type'] == 'product') {
@@ -210,6 +218,104 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
     return physicallyHere ?? false;
+  }
+
+  Future<RentalLineInput?> _registerUnknownQr(String qrValue) async {
+    final nameController = TextEditingController();
+    try {
+      final categories = await ref.read(categoryListProvider.future);
+      if (!mounted) return null;
+      Category? category;
+      final shouldCreate = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A24),
+            title: const Text('Add scanned QR to inventory'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  qrValue,
+                  style: const TextStyle(color: Color(0xFF9999AA)),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Equipment name *'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<Category>(
+                  value: category,
+                  decoration:
+                      const InputDecoration(labelText: 'Category (optional)'),
+                  dropdownColor: const Color(0xFF1A1A24),
+                  style: const TextStyle(color: Color(0xFFEEEEF5)),
+                  items: categories
+                      .map((item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(item.name),
+                          ))
+                      .toList(),
+                  onChanged: (value) => setDialogState(() => category = value),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (nameController.text.trim().isEmpty) return;
+                  Navigator.pop(dialogContext, true);
+                },
+                child: const Text('Save & add'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (shouldCreate != true) return null;
+
+      final equipment = await ref.read(equipmentRepositoryProvider).create(
+            equipment: Equipment(
+              id: '',
+              name: nameController.text.trim(),
+              categoryId: category?.id ?? '',
+              status: 'available',
+              dailyRate: 0,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+            trackingMode: 'serialized',
+            initialQuantity: 0,
+            serialNo: qrValue,
+          );
+      final detail = await ref
+          .read(equipmentRepositoryProvider)
+          .getDetail(id: equipment.id);
+      final serial =
+          detail.serials.where((item) => item.name == qrValue).firstOrNull;
+      if (serial == null) {
+        throw Exception('The new QR asset was not returned by inventory.');
+      }
+      ref.invalidate(equipmentListProvider);
+      return RentalLineInput(
+        lineType: 'serialized',
+        itemCode: equipment.id,
+        itemName: equipment.name,
+        serialNo: serial.name,
+        assetId: serial.id,
+        qty: 1,
+        dailyRate: equipment.dailyRate,
+      );
+    } finally {
+      nameController.dispose();
+    }
   }
 
   Future<void> _addSerializedLine(List<Equipment> allEquipment) async {
