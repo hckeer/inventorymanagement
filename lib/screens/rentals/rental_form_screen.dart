@@ -643,6 +643,27 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
+  Future<void> _scanAndCheckout(
+    List<Equipment> equipment,
+    List<Equipment> quantityItems,
+  ) async {
+    if (_selectedClient == null) {
+      _showError('Select a client before scanning');
+      return;
+    }
+    if (_endDate.isBefore(_startDate)) {
+      _showError('End date must be on or after start date');
+      return;
+    }
+    if (_lines.isNotEmpty) {
+      _showError('Use “Checkout entered lines now” for lines already added.');
+      return;
+    }
+    await _scanRentalLine(equipment, quantityItems);
+    if (!mounted || _lines.isEmpty) return;
+    await _submit(checkoutNow: true);
+  }
+
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -920,7 +941,18 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     onPressed:
                         _loading ? null : () => _submit(checkoutNow: true),
                     icon: const Icon(Icons.outbox_rounded),
-                    label: const Text('Create & checkout now'),
+                    label: const Text('Checkout entered lines now'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () => _scanAndCheckout(allEquipment, qtyItems),
+                    icon: const Icon(Icons.qr_code_scanner_rounded),
+                    label: const Text('Scan & checkout one item now'),
                   ),
                 ),
                 const SizedBox(height: 40),

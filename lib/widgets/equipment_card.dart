@@ -81,6 +81,21 @@ class EquipmentCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 10),
                             StatusBadge(status: equipment.status),
+                            if (equipment.hasSerialNo &&
+                                equipment.availableAssetCount +
+                                        equipment.rentedAssetCount +
+                                        equipment.maintenanceAssetCount +
+                                        equipment.retiredAssetCount >
+                                    0) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                _assetAvailability(equipment),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -102,10 +117,12 @@ class EquipmentCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             'per day',
-                            style:
-                                Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      color: scheme.onSurfaceVariant,
-                                    ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
                           ),
                         ],
                       ),
@@ -125,4 +142,17 @@ class EquipmentCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _assetAvailability(Equipment equipment) {
+  final counts = <String>[
+    if (equipment.availableAssetCount > 0)
+      '${equipment.availableAssetCount} available',
+    if (equipment.rentedAssetCount > 0) '${equipment.rentedAssetCount} rented',
+    if (equipment.maintenanceAssetCount > 0)
+      '${equipment.maintenanceAssetCount} maintenance',
+    if (equipment.retiredAssetCount > 0)
+      '${equipment.retiredAssetCount} retired',
+  ];
+  return counts.join(' · ');
 }

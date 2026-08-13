@@ -4,6 +4,10 @@ class Equipment {
   final String categoryId;
   final String status;
   final double dailyRate;
+  final int availableAssetCount;
+  final int rentedAssetCount;
+  final int maintenanceAssetCount;
+  final int retiredAssetCount;
   final bool hasSerialNo;
   final String? serialNo;
   final String? notes;
@@ -16,6 +20,10 @@ class Equipment {
     required this.categoryId,
     required this.status,
     required this.dailyRate,
+    this.availableAssetCount = 0,
+    this.rentedAssetCount = 0,
+    this.maintenanceAssetCount = 0,
+    this.retiredAssetCount = 0,
     this.hasSerialNo = true,
     this.serialNo,
     this.notes,
@@ -74,6 +82,15 @@ class Equipment {
         .map((asset) =>
             (asset as Map<String, dynamic>)['status'] as String? ?? '')
         .toList();
+    final availableAssetCount =
+        assetStatuses.where((status) => status == 'available').length;
+    final rentedAssetCount = assetStatuses
+        .where((status) => status == 'rented' || status == 'reserved')
+        .length;
+    final maintenanceAssetCount =
+        assetStatuses.where((status) => status == 'maintenance').length;
+    final retiredAssetCount =
+        assetStatuses.where((status) => status == 'retired').length;
     final availableQuantity = balance == null
         ? 0
         : ((balance['on_hand_quantity'] as num? ?? 0) -
@@ -97,6 +114,10 @@ class Equipment {
       categoryId: json['category_id'] as String? ?? '',
       status: status,
       dailyRate: (json['daily_rate'] as num? ?? 0).toDouble(),
+      availableAssetCount: availableAssetCount,
+      rentedAssetCount: rentedAssetCount,
+      maintenanceAssetCount: maintenanceAssetCount,
+      retiredAssetCount: retiredAssetCount,
       hasSerialNo: tracking == 'serialized',
       notes: json['notes'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -192,6 +213,10 @@ class Equipment {
       categoryId: categoryId ?? this.categoryId,
       status: status ?? this.status,
       dailyRate: dailyRate ?? this.dailyRate,
+      availableAssetCount: availableAssetCount,
+      rentedAssetCount: rentedAssetCount,
+      maintenanceAssetCount: maintenanceAssetCount,
+      retiredAssetCount: retiredAssetCount,
       serialNo: serialNo == _unset ? this.serialNo : serialNo as String?,
       notes: notes == _unset ? this.notes : notes as String?,
       createdAt: createdAt ?? this.createdAt,
