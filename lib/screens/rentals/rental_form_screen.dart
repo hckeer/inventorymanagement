@@ -38,6 +38,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   final Set<String> _overrideAssetIds = {};
   final Set<String> _parentAssetIds = {};
   bool _loading = false;
+  bool _scanCheckoutMode = false;
 
   int get _rentalDays => _endDate.difference(_startDate).inDays.clamp(1, 9999);
 
@@ -643,7 +644,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<void> _scanAndCheckout(
+  Future<void> _startScanCheckout(
     List<Equipment> equipment,
     List<Equipment> quantityItems,
   ) async {
@@ -659,9 +660,24 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       _showError('Use “Checkout entered lines now” for lines already added.');
       return;
     }
+    setState(() => _scanCheckoutMode = true);
     await _scanRentalLine(equipment, quantityItems);
-    if (!mounted || _lines.isEmpty) return;
-    await _submit(checkoutNow: true);
+  }
+
+  Future<void> _scanNextCheckoutItem(
+    List<Equipment> equipment,
+    List<Equipment> quantityItems,
+  ) async {
+    await _scanRentalLine(equipment, quantityItems);
+  }
+
+  void _cancelScanCheckout() {
+    setState(() {
+      _scanCheckoutMode = false;
+      _lines.clear();
+      _overrideAssetIds.clear();
+      _parentAssetIds.clear();
+    });
   }
 
   void _showError(String msg) {
@@ -730,7 +746,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _addSerializedLine(allEquipment),
+                        onPressed: _scanCheckoutMode
+                            ? null
+                            : () => _addSerializedLine(allEquipment),
                         icon: const Icon(Icons.qr_code, size: 18),
                         label: const Text('Serial line'),
                       ),
@@ -738,7 +756,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _addQtyLine(qtyItems),
+                        onPressed: _scanCheckoutMode
+                            ? null
+                            : () => _addQtyLine(qtyItems),
                         icon: const Icon(Icons.inventory_2_outlined, size: 18),
                         label: const Text('Qty line'),
                       ),
@@ -746,8 +766,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () =>
-                            _scanRentalLine(allEquipment, qtyItems),
+                        onPressed: _scanCheckoutMode
+                            ? null
+                            : () => _scanRentalLine(allEquipment, qtyItems),
                         icon:
                             const Icon(Icons.qr_code_scanner_rounded, size: 18),
                         label: const Text('Scan'),
@@ -921,7 +942,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _loading ? null : _submit,
+                    onPressed: _loading || _scanCheckoutMode ? null : _submit,
                     child: _loading
                         ? const SizedBox(
                             height: 20,
@@ -938,23 +959,66 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed:
-                        _loading ? null : () => _submit(checkoutNow: true),
+                    onPressed: _loading || _scanCheckoutMode
+                        ? null
+                        : () => _submit(checkoutNow: true),
                     icon: const Icon(Icons.outbox_rounded),
                     label: const Text('Checkout entered lines now'),
                   ),
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _loading
-                        ? null
-                        : () => _scanAndCheckout(allEquipment, qtyItems),
-                    icon: const Icon(Icons.qr_code_scanner_rounded),
-                    label: const Text('Scan & checkout one item now'),
+                if (_scanCheckoutMode) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8A838).withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFFE8A838).withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      '${_lines.length} item${_lines.length == 1 ? '' : 's'} scanned. Scan more, then checkout all scanned items.',
+                      style: const TextStyle(color: Color(0xFFEEEEF5)),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _loading
+                          ? null
+                          : () => _scanNextCheckoutItem(allEquipment, qtyItems),
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      label: const Text('Scan next item'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _loading || _lines.isEmpty
+                          ? null
+                          : () => _submit(checkoutNow: true),
+                      icon: const Icon(Icons.outbox_rounded),
+                      label: const Text('Checkout all scanned items'),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _loading ? null : _cancelScanCheckout,
+                    child: const Text('Cancel scan checkout'),
+                  ),
+                ] else
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _loading
+                          ? null
+                          : () => _startScanCheckout(allEquipment, qtyItems),
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      label: const Text('Scan & checkout multiple items'),
+                    ),
+                  ),
                 const SizedBox(height: 40),
               ],
             );
