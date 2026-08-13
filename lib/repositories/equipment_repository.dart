@@ -48,11 +48,18 @@ class EquipmentRepository {
           .map((e) => e as Map<String, dynamic>)
           .toList();
       final serials = serialMaps.map(EquipmentSerial.fromJson).toList();
+      final balanceData =
+          await mcpClient.get('/products/${Uri.encodeComponent(id)}');
+      final product = balanceData['product'] as Map<String, dynamic>?;
+      final rawBalance = product?['stock_balances'];
+      final balance = rawBalance is List && rawBalance.isNotEmpty
+          ? rawBalance.first as Map<String, dynamic>
+          : rawBalance as Map<String, dynamic>?;
 
       return EquipmentDetail(
         equipment: equipment,
         serials: serials,
-        qtyOnHand: 0,
+        qtyOnHand: (balance?['on_hand_quantity'] as num?)?.toDouble() ?? 0,
         rentalWarehouse: '',
       );
     } on McpApiException catch (e) {
@@ -60,16 +67,37 @@ class EquipmentRepository {
     }
   }
 
-  Future<Equipment> create(
-      {required Equipment equipment, String? serialNo}) async {
+  Future<void> adjustQuantity({
+    required String productId,
+    required int expectedOnHandQuantity,
+    String? notes,
+  }) async {
+    try {
+      await mcpClient.post('/inventory/quantity-adjustments', body: {
+        'product_id': productId,
+        'expected_on_hand_quantity': expectedOnHandQuantity,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      });
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
+  Future<Equipment> create({
+    required Equipment equipment,
+    required String trackingMode,
+    required int initialQuantity,
+    String? serialNo,
+  }) async {
     try {
       final body = <String, dynamic>{
         'name': equipment.name,
         'category_id':
             equipment.categoryId.isEmpty ? null : equipment.categoryId,
-        'notes': equipment.notes,
-        'tracking_mode': equipment.hasSerialNo ? 'serialized' : 'quantity',
+        'tracking_mode': trackingMode,
         'daily_rate': equipment.dailyRate,
+        'initial_quantity': initialQuantity,
+        if (equipment.notes != null) 'notes': equipment.notes,
       };
 
       if (serialNo != null && serialNo.isNotEmpty) {

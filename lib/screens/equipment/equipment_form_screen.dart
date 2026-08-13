@@ -26,11 +26,13 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _dailyRateCtrl = TextEditingController();
+  final _initialQuantityCtrl = TextEditingController(text: '0');
   final _serialCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
 
   String? _selectedCategoryId;
   String _status = kStatusAvailable;
+  String _trackingMode = 'serialized';
   bool _loading = false;
   bool _initialised = false;
 
@@ -40,6 +42,7 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _dailyRateCtrl.dispose();
+    _initialQuantityCtrl.dispose();
     _serialCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
@@ -57,7 +60,9 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
         status: _status,
         dailyRate: double.tryParse(_dailyRateCtrl.text.trim()) ?? 0,
         serialNo:
-            _serialCtrl.text.trim().isEmpty ? null : _serialCtrl.text.trim(),
+            _trackingMode == 'serialized' && _serialCtrl.text.trim().isNotEmpty
+                ? _serialCtrl.text.trim()
+                : null,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -73,7 +78,12 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
       } else {
         await ref.read(equipmentListProvider.notifier).create(
               equipment,
-              serialNo: _serialCtrl.text.trim().isEmpty
+              trackingMode: _trackingMode,
+              initialQuantity: _trackingMode == 'quantity'
+                  ? int.tryParse(_initialQuantityCtrl.text.trim()) ?? 0
+                  : 0,
+              serialNo: _trackingMode != 'serialized' ||
+                      _serialCtrl.text.trim().isEmpty
                   ? null
                   : _serialCtrl.text.trim(),
             );
@@ -103,8 +113,6 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoryListProvider);
-    final scheme = Theme.of(context).colorScheme;
-
     // Pre-fill form when editing and data is available
     if (_isEditing && !_initialised) {
       final detailAsync =
@@ -117,6 +125,7 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
           _notesCtrl.text = equipment.notes ?? '';
           _selectedCategoryId = equipment.categoryId;
           _status = equipment.status;
+          _trackingMode = equipment.hasSerialNo ? 'serialized' : 'quantity';
           _initialised = true;
         }
       });
@@ -147,6 +156,29 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
                     (v == null || v.trim().isEmpty) ? 'Name is required' : null,
               ),
               const SizedBox(height: 16),
+
+              if (!_isEditing) ...[
+                DropdownButtonFormField<String>(
+                  value: _trackingMode,
+                  decoration:
+                      const InputDecoration(labelText: 'Tracking mode *'),
+                  dropdownColor: const Color(0xFF1A1A24),
+                  style: const TextStyle(color: Color(0xFFEEEEF5)),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'serialized',
+                        child: Text(
+                            'Serialized — one barcode per physical asset')),
+                    DropdownMenuItem(
+                        value: 'quantity',
+                        child: Text(
+                            'Quantity — manual quantity entry, no barcode')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _trackingMode = value ?? _trackingMode),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Category dropdown
               DropdownButtonFormField<String>(
@@ -200,18 +232,38 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              _field(
-                controller: _serialCtrl,
-                label: 'Physical barcode / serial number (optional)',
-                suffixIcon: _isEditing
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.qr_code_scanner_rounded),
-                        tooltip: 'Scan physical barcode',
-                        onPressed: _scanAssetBarcode,
-                      ),
-              ),
-              const SizedBox(height: 16),
+              if (_trackingMode == 'serialized') ...[
+                _field(
+                  controller: _serialCtrl,
+                  label: 'Physical asset barcode *',
+                  validator: (value) =>
+                      !_isEditing && (value == null || value.trim().isEmpty)
+                          ? 'A serialized asset needs a unique barcode'
+                          : null,
+                  suffixIcon: _isEditing
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.qr_code_scanner_rounded),
+                          tooltip: 'Scan physical barcode',
+                          onPressed: _scanAssetBarcode,
+                        ),
+                ),
+                const SizedBox(height: 16),
+              ] else ...[
+                _field(
+                  controller: _initialQuantityCtrl,
+                  label: 'Initial expected quantity *',
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    final quantity = int.tryParse(value?.trim() ?? '');
+                    if (quantity == null || quantity < 0) {
+                      return 'Enter a whole number of zero or more';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
 
               _field(
                 controller: _notesCtrl,

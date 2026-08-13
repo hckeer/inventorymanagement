@@ -26,9 +26,19 @@ class EquipmentListNotifier extends AsyncNotifier<List<Equipment>> {
   }
 
   /// Creates equipment and refreshes the list.
-  Future<void> create(Equipment equipment, {String? serialNo}) async {
+  Future<void> create(
+    Equipment equipment, {
+    required String trackingMode,
+    required int initialQuantity,
+    String? serialNo,
+  }) async {
     try {
-      await _repo.create(equipment: equipment, serialNo: serialNo);
+      await _repo.create(
+        equipment: equipment,
+        trackingMode: trackingMode,
+        initialQuantity: initialQuantity,
+        serialNo: serialNo,
+      );
       ref.invalidateSelf();
     } catch (e, st) {
       state = AsyncError(e, st);

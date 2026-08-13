@@ -16,25 +16,12 @@ import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/app_error.dart';
 
-String _newQuickCheckoutRequestId() {
-  final random = Random.secure();
-  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex =
-      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
-      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
-}
-
 class RentalFormScreen extends ConsumerStatefulWidget {
   const RentalFormScreen({
     super.key,
     required this.rentalId,
-    this.quickCheckout = false,
   });
   final String? rentalId;
-  final bool quickCheckout;
 
   @override
   ConsumerState<RentalFormScreen> createState() => _RentalFormScreenState();
@@ -50,9 +37,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   final _depositCtrl = TextEditingController(text: '0');
   final Set<String> _overrideAssetIds = {};
   final Set<String> _parentAssetIds = {};
-  final Set<String> _scannedBarcodes = {};
-  final String _quickCheckoutRequestId = _newQuickCheckoutRequestId();
-  String? _overrideReason;
   bool _loading = false;
 
   int get _rentalDays => _endDate.difference(_startDate).inDays.clamp(1, 9999);
@@ -110,16 +94,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   ) async {
     final barcode = await context.push<String>('/scanner');
     if (barcode == null || !mounted) return;
-    if (widget.quickCheckout) {
-      final added = _scannedBarcodes.add(barcode.trim());
-      if (!added) {
-        _showError('This barcode is already in the scan list.');
-        return;
-      }
-      setState(() {});
-      return;
-    }
-
     try {
       final data =
           await mcpClient.get('/barcodes/${Uri.encodeComponent(barcode)}');
@@ -168,14 +142,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
         if (assetId == null || productId == null) continue;
         final status = asset['status'] as String?;
         if (status != null && status != 'available') {
-          if (status != 'maintenance' && status != 'retired') {
-            _showError('This item is $status and cannot be overridden.');
-            return;
-          }
-          final reason = await _confirmPhysicalAvailability(status);
-          if (reason == null) return;
+          final physicallyHere = await _confirmPhysicalAvailability();
+          if (!physicallyHere) return;
           _overrideAssetIds.add(assetId);
-          _overrideReason = reason;
         }
         if (_lines.any((line) => line.assetId == assetId) ||
             additions.any((line) => line.assetId == assetId)) {
@@ -204,6 +173,10 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
         return;
       }
       setState(() => _lines.addAll(additions));
+      for (final productId in additions.map((line) => line.itemCode).toSet()) {
+        await _offerCheckoutSuggestions(productId, equipment);
+      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
           additions.length == 1
@@ -219,45 +192,28 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<String?> _confirmPhysicalAvailability(String status) async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
+  Future<bool> _confirmPhysicalAvailability() async {
+    final physicallyHere = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Inventory conflict'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-                'Database status is "$status", but the item was physically scanned.'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration:
-                  const InputDecoration(labelText: 'Reason for override'),
-            ),
-          ],
-        ),
+        title: const Text('Is this item physically here?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('No')),
           ElevatedButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              Navigator.pop(dialogContext, value.isEmpty ? null : value);
-            },
-            child: const Text('Physically available'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Yes'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    return reason;
+    return physicallyHere ?? false;
   }
 
-  Future<void> _addSerializedLine(List<Equipment> serializedItems) async {
+  Future<void> _addSerializedLine(List<Equipment> allEquipment) async {
+    final serializedItems =
+        allEquipment.where((item) => item.hasSerialNo).toList();
     if (serializedItems.isEmpty) {
       _showError('No serialized items available');
       return;
@@ -393,7 +349,141 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
           ),
         );
       });
+      await _offerCheckoutSuggestions(selectedItem!.id, allEquipment);
     }
+  }
+
+  Future<void> _offerCheckoutSuggestions(
+    String serializedProductId,
+    List<Equipment> allEquipment,
+  ) async {
+    try {
+      final data = await mcpClient.get(
+        '/products/${Uri.encodeComponent(serializedProductId)}/checkout-suggestions',
+      );
+      final suggestions = (data['suggestions'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (!mounted || suggestions.isEmpty) return;
+
+      final selected = <String>{
+        for (final suggestion in suggestions)
+          if (_isSuggestedProductAvailable(suggestion, allEquipment))
+            suggestion['quantity_product_id'] as String,
+      };
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A24),
+            title: const Text('Suggested accessories'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: suggestions.map((suggestion) {
+                  final product =
+                      suggestion['product'] as Map<String, dynamic>?;
+                  final productId = suggestion['quantity_product_id'] as String;
+                  final item = allEquipment
+                      .where((equipment) => equipment.id == productId)
+                      .firstOrNull;
+                  final available = _isSuggestedProductAvailable(
+                    suggestion,
+                    allEquipment,
+                  );
+                  final quantity = suggestion['default_quantity'] as num? ?? 1;
+                  return CheckboxListTile(
+                    value: selected.contains(productId),
+                    enabled: available,
+                    onChanged: (value) => setDialogState(() {
+                      if (value ?? false) {
+                        selected.add(productId);
+                      } else {
+                        selected.remove(productId);
+                      }
+                    }),
+                    title: Text(
+                      item?.name ?? product?['name'] as String? ?? 'Accessory',
+                    ),
+                    subtitle: Text(
+                      available
+                          ? '${quantity.toInt()} suggested — ${suggestion['reason']}'
+                          : 'Not currently available',
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  );
+                }).toList(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Not now'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Add selected'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      setState(() {
+        for (final suggestion in suggestions) {
+          final productId = suggestion['quantity_product_id'] as String;
+          if (!selected.contains(productId)) continue;
+          final item = allEquipment
+              .where((equipment) => equipment.id == productId)
+              .firstOrNull;
+          if (item == null) continue;
+          _addOrIncreaseQuantityLine(
+            item,
+            (suggestion['default_quantity'] as num? ?? 1).toInt(),
+          );
+        }
+      });
+    } on McpApiException catch (error) {
+      _showError(error.message);
+    }
+  }
+
+  bool _isSuggestedProductAvailable(
+    Map<String, dynamic> suggestion,
+    List<Equipment> allEquipment,
+  ) {
+    final productId = suggestion['quantity_product_id'] as String?;
+    return productId != null &&
+        allEquipment.any(
+          (item) => item.id == productId && item.status == 'available',
+        );
+  }
+
+  void _addOrIncreaseQuantityLine(Equipment item, int quantity) {
+    final index = _lines.indexWhere(
+      (line) => line.assetId == null && line.itemCode == item.id,
+    );
+    if (index < 0) {
+      _lines.add(RentalLineInput(
+        lineType: 'qty',
+        itemCode: item.id,
+        itemName: item.name,
+        qty: quantity.toDouble(),
+        dailyRate: item.dailyRate,
+      ));
+      return;
+    }
+    final line = _lines[index];
+    _lines[index] = RentalLineInput(
+      lineType: line.lineType,
+      itemCode: line.itemCode,
+      itemName: line.itemName,
+      serialNo: line.serialNo,
+      assetId: line.assetId,
+      qty: line.qty + quantity,
+      dailyRate: line.dailyRate,
+    );
   }
 
   Future<void> _addQtyLine(
@@ -497,15 +587,13 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool checkoutNow = false}) async {
     if (_selectedClient == null) {
       _showError('Select a client');
       return;
     }
-    if (widget.quickCheckout ? _scannedBarcodes.isEmpty : _lines.isEmpty) {
-      _showError(widget.quickCheckout
-          ? 'Scan at least one item'
-          : 'Add at least one rental line');
+    if (_lines.isEmpty) {
+      _showError('Add at least one rental line');
       return;
     }
     if (_endDate.isBefore(_startDate)) {
@@ -515,18 +603,20 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
     setState(() => _loading = true);
     try {
-      final rentalId = widget.quickCheckout
-          ? await ref.read(rentalListProvider.notifier).createManifestCheckout(
+      final rentalId = checkoutNow
+          ? await ref.read(rentalListProvider.notifier).createAndCheckout(
                 clientId: _selectedClient!.id,
                 startDate: _startDate,
                 endDate: _endDate,
-                barcodes: _scannedBarcodes.toList(),
+                lines: _lines,
                 depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
                 depositPaid: _depositPaid,
-                requestId: _quickCheckoutRequestId,
                 notes: _notesCtrl.text.trim().isEmpty
                     ? null
                     : _notesCtrl.text.trim(),
+                overrideAssetIds: _overrideAssetIds.toList(),
+                parentAssetIds: _parentAssetIds.toList(),
+                requestId: _newRequestId(),
               )
           : await ref.read(rentalListProvider.notifier).createAndSubmit(
                 clientId: _selectedClient!.id,
@@ -539,7 +629,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     ? null
                     : _notesCtrl.text.trim(),
                 overrideAssetIds: _overrideAssetIds.toList(),
-                overrideReason: _overrideReason,
               );
 
       ref.invalidate(equipmentListProvider);
@@ -590,8 +679,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
             final availableEquipment = allEquipment
                 .where((e) => e.status.toLowerCase() == 'available')
                 .toList();
-            final serializedItems =
-                availableEquipment.where((e) => e.hasSerialNo).toList();
             final qtyItems =
                 availableEquipment.where((e) => !e.hasSerialNo).toList();
 
@@ -616,32 +703,25 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   onChanged: (c) => setState(() => _selectedClient = c),
                 ),
                 const SizedBox(height: 24),
-                _StepHeader(
-                    number: '2',
-                    title: widget.quickCheckout
-                        ? 'Scan items going out'
-                        : 'Rental lines'),
+                _StepHeader(number: '2', title: 'Rental lines'),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    if (!widget.quickCheckout)
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _addSerializedLine(serializedItems),
-                          icon: const Icon(Icons.qr_code, size: 18),
-                          label: const Text('Serial line'),
-                        ),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _addSerializedLine(allEquipment),
+                        icon: const Icon(Icons.qr_code, size: 18),
+                        label: const Text('Serial line'),
                       ),
-                    if (!widget.quickCheckout) const SizedBox(width: 8),
-                    if (!widget.quickCheckout)
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _addQtyLine(qtyItems),
-                          icon:
-                              const Icon(Icons.inventory_2_outlined, size: 18),
-                          label: const Text('Qty line'),
-                        ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _addQtyLine(qtyItems),
+                        icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                        label: const Text('Qty line'),
                       ),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
@@ -659,16 +739,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (widget.quickCheckout && _scannedBarcodes.isNotEmpty)
-                  ..._scannedBarcodes.map((barcode) => ListTile(
-                      title: Text(barcode),
-                      trailing: IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => setState(
-                              () => _scannedBarcodes.remove(barcode)))))
-                else if (_lines.isEmpty)
+                if (_lines.isEmpty)
                   const Text(
-                    'Add items manually or scan an item/container barcode.',
+                    'Add serialized equipment, enter a quantity, or scan an asset barcode.',
                     style: TextStyle(color: Color(0xFF9999AA), fontSize: 13),
                   )
                 else
@@ -792,9 +865,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     labelText: 'Notes (optional)',
                   ),
                 ),
-                if (widget.quickCheckout
-                    ? _scannedBarcodes.isNotEmpty
-                    : _lines.isNotEmpty) ...[
+                if (_lines.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -814,8 +885,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         ),
                         _SummaryRow(
                           label: 'Lines',
-                          value:
-                              '${widget.quickCheckout ? _scannedBarcodes.length : _lines.length}',
+                          value: '${_lines.length}',
                         ),
                         _SummaryRow(
                           label: 'Est. total',
@@ -840,9 +910,17 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                               color: Color(0xFF0F0F13),
                             ),
                           )
-                        : Text(widget.quickCheckout
-                            ? 'Confirm checkout'
-                            : 'Create rental'),
+                        : const Text('Create rental'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        _loading ? null : () => _submit(checkoutNow: true),
+                    icon: const Icon(Icons.outbox_rounded),
+                    label: const Text('Create & checkout now'),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -853,6 +931,16 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
   }
+}
+
+String _newRequestId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex =
+      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
 class _StepHeader extends StatelessWidget {

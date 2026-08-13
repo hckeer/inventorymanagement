@@ -128,6 +128,34 @@ describe("quick checkout schema", () => {
   });
 });
 
+describe("V1 stabilization schema", () => {
+  it("retires raw barcode manifests in favour of evented product and asset lifecycle operations", () => {
+    const sql = readFileSync(resolve(migrationsDirectory, stabilizationMigration()), "utf8");
+
+    expect(sql).toMatch(/physical_presence_confirmed/i);
+    expect(sql).toMatch(/Is this item physically here\?/i);
+    expect(sql).toMatch(/Unscanned at return; asset remains rented\/unresolved/i);
+    expect(sql).toMatch(/create or replace function public\.adjust_quantity_inventory/i);
+    expect(sql).toMatch(/inventory_events are append-only/i);
+    expect(sql).toMatch(/when 'damaged' then 'maintenance'/i);
+    expect(sql).toMatch(/else 'retired'/i);
+  });
+});
+
+describe("checkout suggestions schema", () => {
+  it("stores optional serialized-to-quantity checkout suggestions without kit records", () => {
+    const migration = readFileSync(
+      resolve(migrationsDirectory, checkoutSuggestionsMigration()),
+      "utf8",
+    );
+
+    expect(migration).toMatch(/create table public\.checkout_suggestions/i);
+    expect(migration).toMatch(/serialized_product_id uuid not null/i);
+    expect(migration).toMatch(/quantity_product_id uuid not null/i);
+    expect(migration).not.toMatch(/insert into public\.(kits|kit_components)/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
@@ -159,5 +187,17 @@ function serializedAssetMigration(): string {
 function quickCheckoutMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_create_and_checkout_rental\.sql$/.test(name),
+  ) ?? "";
+}
+
+function stabilizationMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_stabilize_v1_lifecycle\.sql$/.test(name),
+  ) ?? "";
+}
+
+function checkoutSuggestionsMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_checkout_suggestions\.sql$/.test(name),
   ) ?? "";
 }
