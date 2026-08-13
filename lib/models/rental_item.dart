@@ -2,6 +2,7 @@ class RentalItem {
   final String id;
   final String rentalId;
   final String equipmentId;
+  final String? equipmentName;
   String get productId => equipmentId;
   final String? assetId;
   final String lineType;
@@ -16,6 +17,7 @@ class RentalItem {
     required this.id,
     required this.rentalId,
     required this.equipmentId,
+    this.equipmentName,
     this.assetId,
     required this.lineType,
     this.serialNo,
@@ -31,9 +33,12 @@ class RentalItem {
       id: json['id'] as String,
       rentalId: json['rental_id'] as String,
       equipmentId: json['product_id'] as String,
+      equipmentName:
+          (json['products'] as Map<String, dynamic>?)?['name'] as String?,
       assetId: json['asset_id'] as String?,
       lineType: json['asset_id'] == null ? 'quantity' : 'serialized',
-      serialNo: null,
+      serialNo:
+          (json['assets'] as Map<String, dynamic>?)?['asset_id'] as String?,
       qty: (json['quantity'] as num?)?.toDouble() ?? 1,
       lineIdx: 0,
       dailyRateSnapshot: (json['daily_rate_snapshot'] as num).toDouble(),
@@ -53,6 +58,7 @@ class RentalItem {
       id: '$rentalId-${line['idx'] ?? itemCode}',
       rentalId: rentalId,
       equipmentId: lineType == 'serialized' ? (serialNo ?? itemCode) : itemCode,
+      equipmentName: line['item_name'] as String?,
       lineType: lineType,
       serialNo: serialNo,
       qty: (line['qty'] as num?)?.toDouble() ?? 1,
@@ -82,6 +88,7 @@ class RentalItem {
     String? id,
     String? rentalId,
     String? equipmentId,
+    String? equipmentName,
     String? lineType,
     Object? serialNo = _unset,
     double? qty,
@@ -94,6 +101,7 @@ class RentalItem {
       id: id ?? this.id,
       rentalId: rentalId ?? this.rentalId,
       equipmentId: equipmentId ?? this.equipmentId,
+      equipmentName: equipmentName ?? this.equipmentName,
       lineType: lineType ?? this.lineType,
       serialNo: serialNo == _unset ? this.serialNo : serialNo as String?,
       qty: qty ?? this.qty,
@@ -108,9 +116,7 @@ class RentalItem {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is RentalItem &&
-          runtimeType == other.runtimeType &&
-          id == other.id;
+      other is RentalItem && runtimeType == other.runtimeType && id == other.id;
 
   @override
   int get hashCode => id.hashCode;

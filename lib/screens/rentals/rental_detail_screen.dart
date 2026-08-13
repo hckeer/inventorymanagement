@@ -19,7 +19,6 @@ class RentalDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rentalAsync = ref.watch(rentalDetailProvider(id));
     final itemsAsync = ref.watch(rentalItemsProvider(id));
-    final manifestAsync = ref.watch(rentalManifestProvider(id));
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -171,15 +170,8 @@ class RentalDetailScreen extends ConsumerWidget {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: (manifestAsync.valueOrNull?.isNotEmpty == true ||
-                          itemsAsync.valueOrNull?.isNotEmpty == true)
+                  onPressed: itemsAsync.valueOrNull?.isNotEmpty == true
                       ? () {
-                          final manifest = manifestAsync.valueOrNull;
-                          if (manifest != null && manifest.isNotEmpty) {
-                            context.push('/manifest-return',
-                                extra: {'rentalId': id, 'barcodes': manifest});
-                            return;
-                          }
                           final items = itemsAsync.valueOrNull!;
                           context.push('/checkout-scanner', extra: {
                             'rentalId': id,
@@ -356,8 +348,8 @@ class _EquipmentItemTileState extends ConsumerState<_EquipmentItemTile> {
               Expanded(
                 child: Text(
                   item.lineType == 'serialized'
-                      ? item.serialNo ?? item.equipmentId
-                      : '${item.equipmentId} × ${item.qty.toStringAsFixed(0)}',
+                      ? '${item.equipmentName ?? 'Equipment'}\nQR / barcode: ${item.serialNo ?? 'Unknown'}'
+                      : '${item.equipmentName ?? 'Equipment'} × ${item.qty.toStringAsFixed(0)}',
                   style: const TextStyle(
                       color: Color(0xFFEEEEF5),
                       fontWeight: FontWeight.w500,

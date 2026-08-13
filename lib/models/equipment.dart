@@ -100,14 +100,19 @@ class Equipment {
         ? 'retired'
         : tracking == 'quantity'
             ? (availableQuantity > 0 ? 'available' : 'rented')
-            : assetStatuses.contains('available')
-                ? 'available'
-                : assetStatuses.contains('rented') ||
-                        assetStatuses.contains('reserved')
-                    ? 'rented'
-                    : assetStatuses.contains('maintenance')
-                        ? 'maintenance'
-                        : 'retired';
+            : availableAssetCount > 0 &&
+                    (rentedAssetCount > 0 ||
+                        maintenanceAssetCount > 0 ||
+                        retiredAssetCount > 0)
+                ? 'mixed'
+                : assetStatuses.contains('available')
+                    ? 'available'
+                    : assetStatuses.contains('rented') ||
+                            assetStatuses.contains('reserved')
+                        ? 'rented'
+                        : assetStatuses.contains('maintenance')
+                            ? 'maintenance'
+                            : 'retired';
     return Equipment(
       id: json['id'] as String,
       name: json['name'] as String,

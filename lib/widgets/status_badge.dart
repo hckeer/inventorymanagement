@@ -38,6 +38,12 @@ class StatusBadge extends StatelessWidget {
           bg: const Color(0xFF4CAF50).withValues(alpha: 0.18),
           fg: const Color(0xFF66BB6A),
         );
+      case 'mixed':
+        return _Config(
+          label: 'Mixed',
+          bg: const Color(0xFF42A5F5).withValues(alpha: 0.18),
+          fg: const Color(0xFF64B5F6),
+        );
       case kStatusRented:
       case kRentalStatusActive:
         return _Config(

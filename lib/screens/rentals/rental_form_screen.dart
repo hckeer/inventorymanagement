@@ -820,7 +820,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
           ),
           data: (allEquipment) {
             final availableEquipment = allEquipment
-                .where((e) => e.status.toLowerCase() == 'available')
+                .where((e) =>
+                    e.status.toLowerCase() == 'available' ||
+                    e.availableAssetCount > 0)
                 .toList();
             final qtyItems =
                 availableEquipment.where((e) => !e.hasSerialNo).toList();

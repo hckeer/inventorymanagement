@@ -40,7 +40,7 @@ void main() {
       'updated_at': '2026-08-10T00:00:00Z',
     });
 
-    expect(equipment.status, 'available');
+    expect(equipment.status, 'mixed');
     expect(equipment.availableAssetCount, 2);
     expect(equipment.rentedAssetCount, 1);
     expect(equipment.maintenanceAssetCount, 1);

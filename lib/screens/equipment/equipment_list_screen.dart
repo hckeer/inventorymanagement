@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/mcp_client.dart';
+import '../../models/equipment.dart';
 import '../../providers/equipment_provider.dart';
 import '../../widgets/app_empty.dart';
 import '../../widgets/app_error.dart';
@@ -107,8 +108,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       color: selected
                           ? const Color(0xFF0F0F13)
                           : const Color(0xFF9999AA),
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                       fontSize: 13,
                     ),
                   ),
@@ -146,9 +146,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
               data: (items) {
                 final filtered = _selectedStatus.isEmpty
                     ? items
-                    : items
-                        .where((e) => e.status == _selectedStatus)
-                        .toList();
+                    : items.where((e) => _matchesStatusFilter(e)).toList();
 
                 if (filtered.isEmpty) {
                   return RefreshIndicator(
@@ -162,7 +160,8 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                         AppEmpty(
                           icon: Icons.videocam_off_rounded,
                           title: 'No equipment found',
-                          subtitle: 'Try a different filter or add new equipment',
+                          subtitle:
+                              'Try a different filter or add new equipment',
                         ),
                       ],
                     ),
@@ -181,8 +180,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       final equipment = filtered[index];
                       return EquipmentCard(
                         equipment: equipment,
-                        onTap: () =>
-                            context.push('/equipment/${equipment.id}'),
+                        onTap: () => context.push('/equipment/${equipment.id}'),
                       );
                     },
                   ),
@@ -200,5 +198,19 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
         child: const Icon(Icons.add, size: 28),
       ),
     );
+  }
+
+  bool _matchesStatusFilter(Equipment equipment) {
+    return switch (_selectedStatus) {
+      kStatusAvailable => equipment.status == kStatusAvailable ||
+          equipment.availableAssetCount > 0,
+      kStatusRented =>
+        equipment.status == kStatusRented || equipment.rentedAssetCount > 0,
+      kStatusMaintenance => equipment.status == kStatusMaintenance ||
+          equipment.maintenanceAssetCount > 0,
+      kStatusRetired =>
+        equipment.status == kStatusRetired || equipment.retiredAssetCount > 0,
+      _ => equipment.status == _selectedStatus,
+    };
   }
 }

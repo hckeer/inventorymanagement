@@ -25,7 +25,8 @@ class CheckoutScannerScreen extends ConsumerStatefulWidget {
       _CheckoutScannerScreenState();
 }
 
-class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> with WidgetsBindingObserver {
+class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
+    with WidgetsBindingObserver {
   final MobileScannerController _controller = MobileScannerController(
     formats: const [BarcodeFormat.all],
     detectionSpeed: DetectionSpeed.normal,
@@ -37,10 +38,10 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
   final Set<String> _verifiedIds = {};
   final Set<String> _scannedParentAssetIds = {};
   final String _requestId = _newRequestId();
-  
+
   // Track recently processed barcodes so we don't spam the API
   final Set<String> _recentScans = {};
-  
+
   bool _isProcessing = false;
   bool _isCheckingOut = false;
 
@@ -85,11 +86,12 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
           _isProcessing = true;
           _recentScans.add(rawValue);
         });
-        
+
         try {
-          final data = await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
+          final data =
+              await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
           final lookup = data['lookup'] as Map<String, dynamic>?;
-          
+
           if (lookup != null && lookup['result_type'] != 'unknown') {
             final assetId = lookup['asset_id'] as String?;
             final productId = lookup['product_id'] as String?;
@@ -103,18 +105,22 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
             if (assetId != null && children.isNotEmpty) {
               _scannedParentAssetIds.add(assetId);
             }
-            
+
             int newlyVerifiedCount = 0;
-            
+
             void verifyItem(String? aId, String? pId) {
               RentalItem? match;
               if (aId != null) {
-                match = widget.items.where((item) => item.assetId == aId).firstOrNull;
+                match = widget.items
+                    .where((item) => item.assetId == aId)
+                    .firstOrNull;
               } else if (pId != null) {
-                match = widget.items.where((item) => 
-                  item.productId == pId && item.assetId == null &&
-                  !_verifiedIds.contains(item.id)
-                ).firstOrNull;
+                match = widget.items
+                    .where((item) =>
+                        item.productId == pId &&
+                        item.assetId == null &&
+                        !_verifiedIds.contains(item.id))
+                    .firstOrNull;
               }
 
               if (match != null && !_verifiedIds.contains(match.id)) {
@@ -124,10 +130,10 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                 });
               }
             }
-            
+
             // Verify parent
             verifyItem(assetId, productId);
-            
+
             // Verify children
             for (final child in children) {
               final childAssetId = child['asset_id'] as String?;
@@ -178,11 +184,11 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
     setState(() => _isCheckingOut = true);
     try {
       await ref.read(rentalListProvider.notifier).checkout(
-        rentalId: widget.rentalId,
-        verifiedRentalItemIds: _verifiedIds.toList(),
-        parentAssetIds: _scannedParentAssetIds.toList(),
-        requestId: _requestId,
-      );
+            rentalId: widget.rentalId,
+            verifiedRentalItemIds: _verifiedIds.toList(),
+            parentAssetIds: _scannedParentAssetIds.toList(),
+            requestId: _requestId,
+          );
       ref.invalidate(rentalDetailProvider(widget.rentalId));
       ref.invalidate(rentalItemsProvider(widget.rentalId));
       ref.invalidate(equipmentListProvider);
@@ -237,7 +243,8 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                          const Icon(Icons.error_outline_rounded,
+                              color: Colors.red, size: 48),
                           const SizedBox(height: 16),
                           Text(
                             'Camera Error:\n${error.errorDetails?.message ?? error.errorCode.name}',
@@ -254,18 +261,23 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                   height: 250,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: allVerified ? const Color(0xFF4CAF50) : const Color(0xFFE8A838), 
-                      width: 3
-                    ),
+                        color: allVerified
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFE8A838),
+                        width: 3),
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 Positioned(
                   bottom: 20,
                   child: Text(
-                    allVerified ? 'All items verified!' : 'Scan items to verify',
+                    allVerified
+                        ? 'All items verified!'
+                        : 'Scan items to verify',
                     style: TextStyle(
-                      color: allVerified ? const Color(0xFF4CAF50) : const Color(0xFFEEEEF5),
+                      color: allVerified
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFEEEEF5),
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       shadows: const [
@@ -281,7 +293,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
               ],
             ),
           ),
-          
+
           // List of items (bottom half)
           Expanded(
             flex: 5,
@@ -315,7 +327,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                       itemBuilder: (context, index) {
                         final item = widget.items[index];
                         final isVerified = _verifiedIds.contains(item.id);
-                        
+
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
@@ -323,22 +335,28 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                             color: const Color(0xFF252533),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isVerified ? const Color(0xFF4CAF50) : Colors.transparent,
+                              color: isVerified
+                                  ? const Color(0xFF4CAF50)
+                                  : Colors.transparent,
                               width: 1,
                             ),
                           ),
                           child: Row(
                             children: [
                               Icon(
-                                isVerified ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                color: isVerified ? const Color(0xFF4CAF50) : const Color(0xFF9999AA),
+                                isVerified
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                color: isVerified
+                                    ? const Color(0xFF4CAF50)
+                                    : const Color(0xFF9999AA),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
                                   item.lineType == 'serialized'
-                                      ? (item.serialNo ?? item.equipmentId)
-                                      : '${item.equipmentId} × ${item.qty.toStringAsFixed(0)}',
+                                      ? '${item.equipmentName ?? 'Equipment'} · ${item.serialNo ?? 'Unknown'}'
+                                      : '${item.equipmentName ?? 'Equipment'} × ${item.qty.toStringAsFixed(0)}',
                                   style: const TextStyle(
                                     color: Color(0xFFEEEEF5),
                                     fontSize: 14,
@@ -352,7 +370,21 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                       },
                     ),
                   ),
-                  
+
+                  if (widget.items.any((item) => item.assetId == null))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: OutlinedButton.icon(
+                        onPressed: () => setState(() {
+                          _verifiedIds.addAll(widget.items
+                              .where((item) => item.assetId == null)
+                              .map((item) => item.id));
+                        }),
+                        icon: const Icon(Icons.numbers_rounded),
+                        label: const Text('Confirm quantity lines'),
+                      ),
+                    ),
+
                   // Checkout Button
                   Padding(
                     padding: const EdgeInsets.all(20),
@@ -362,18 +394,24 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen> w
                         icon: const Icon(Icons.outbox_rounded),
                         label: _isCheckingOut
                             ? const SizedBox(
-                                width: 18, height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F0F13)),
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Color(0xFF0F0F13)),
                               )
                             : const Text('Confirm Checkout'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFE8A838),
                           foregroundColor: const Color(0xFF0F0F13),
-                          disabledBackgroundColor: const Color(0xFFE8A838).withOpacity(0.3),
+                          disabledBackgroundColor:
+                              const Color(0xFFE8A838).withOpacity(0.3),
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: (!allVerified || _isCheckingOut) ? null : _handleCheckout,
+                        onPressed: (!allVerified || _isCheckingOut)
+                            ? null
+                            : _handleCheckout,
                       ),
                     ),
                   ),
@@ -392,6 +430,7 @@ String _newRequestId() {
   final bytes = List<int>.generate(16, (_) => random.nextInt(256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  final hex =
+      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }

@@ -25,7 +25,8 @@ class CheckinScannerScreen extends ConsumerStatefulWidget {
       _CheckinScannerScreenState();
 }
 
-class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> with WidgetsBindingObserver {
+class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
+    with WidgetsBindingObserver {
   final MobileScannerController _controller = MobileScannerController(
     formats: const [BarcodeFormat.all],
     detectionSpeed: DetectionSpeed.normal,
@@ -36,11 +37,12 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
   // Set of rental item IDs that have been verified.
   final Set<String> _verifiedIds = {};
   final Map<String, int> _returnedQuantities = {};
+  final Map<String, String> _serializedDispositions = {};
   final String _requestId = _newReturnRequestId();
-  
+
   // Track recently processed barcodes so we don't spam the API
   final Set<String> _recentScans = {};
-  
+
   bool _isProcessing = false;
   bool _isCheckingIn = false;
 
@@ -85,15 +87,18 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
           _isProcessing = true;
           _recentScans.add(rawValue);
         });
-        
+
         try {
-          final data = await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
+          final data =
+              await mcpClient.get('/barcodes/${Uri.encodeComponent(rawValue)}');
           final lookup = data['lookup'] as Map<String, dynamic>?;
-          
+
           if (lookup != null && lookup['result_type'] != 'unknown') {
             final assetId = lookup['asset_id'] as String?;
             final productId = lookup['product_id'] as String?;
-            final children = <dynamic>[...?(lookup['children'] as List<dynamic>?)];
+            final children = <dynamic>[
+              ...?(lookup['children'] as List<dynamic>?)
+            ];
             if (assetId == null && lookup['tracking_mode'] == 'serialized') {
               throw McpApiException(
                 'AMBIGUOUS_PRODUCT_BARCODE',
@@ -104,22 +109,30 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
               final snapshotData = await mcpClient.get(
                 '/rentals/${Uri.encodeComponent(widget.rentalId)}/parent-snapshots/${Uri.encodeComponent(assetId)}',
               );
-              for (final snapshot in snapshotData['snapshots'] as List<dynamic>? ?? []) {
-                children.add({'asset_id': (snapshot as Map<String, dynamic>)['child_asset_id']});
+              for (final snapshot
+                  in snapshotData['snapshots'] as List<dynamic>? ?? []) {
+                children.add({
+                  'asset_id':
+                      (snapshot as Map<String, dynamic>)['child_asset_id']
+                });
               }
             }
-            
+
             int newlyVerifiedCount = 0;
-            
+
             void verifyItem(String? aId, String? pId) {
               RentalItem? match;
               if (aId != null) {
-                match = widget.items.where((item) => item.assetId == aId).firstOrNull;
+                match = widget.items
+                    .where((item) => item.assetId == aId)
+                    .firstOrNull;
               } else if (pId != null) {
-                match = widget.items.where((item) => 
-                  item.productId == pId && item.assetId == null &&
-                  !_verifiedIds.contains(item.id)
-                ).firstOrNull;
+                match = widget.items
+                    .where((item) =>
+                        item.productId == pId &&
+                        item.assetId == null &&
+                        !_verifiedIds.contains(item.id))
+                    .firstOrNull;
               }
 
               if (match != null && !_verifiedIds.contains(match.id)) {
@@ -129,10 +142,12 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                 });
               }
             }
-            
+
             if (assetId == null && productId != null) {
-              final quantityItem = widget.items.where((item) =>
-                  item.productId == productId && item.assetId == null).firstOrNull;
+              final quantityItem = widget.items
+                  .where((item) =>
+                      item.productId == productId && item.assetId == null)
+                  .firstOrNull;
               if (quantityItem != null) {
                 await _setReturnedQuantity(quantityItem);
                 return;
@@ -141,7 +156,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
 
             // Verify parent
             verifyItem(assetId, productId);
-            
+
             // Verify children
             for (final child in children) {
               final childAssetId = child['asset_id'] as String?;
@@ -192,11 +207,12 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
     setState(() => _isCheckingIn = true);
     try {
       await ref.read(rentalListProvider.notifier).markReturned(
-        rentalId: widget.rentalId,
-        verifiedRentalItemIds: _verifiedIds.toList(),
-        returnedQuantities: _quantityReturnPayload(),
-        requestId: _requestId,
-      );
+            rentalId: widget.rentalId,
+            verifiedRentalItemIds: _verifiedIds.toList(),
+            returnedQuantities: _quantityReturnPayload(),
+            serializedDispositions: _serializedDispositionPayload(),
+            requestId: _requestId,
+          );
       ref.invalidate(rentalDetailProvider(widget.rentalId));
       ref.invalidate(rentalItemsProvider(widget.rentalId));
       ref.invalidate(equipmentListProvider);
@@ -218,9 +234,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
 
   @override
   Widget build(BuildContext context) {
-    final serializedItems = widget.items.where((item) => item.assetId != null);
     final quantityItems = widget.items.where((item) => item.assetId == null);
-    final allVerified = serializedItems.every((item) => _verifiedIds.contains(item.id)) &&
+    final allVerified =
         quantityItems.every((item) => _returnedQuantities.containsKey(item.id));
 
     return Scaffold(
@@ -254,7 +269,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                          const Icon(Icons.error_outline_rounded,
+                              color: Colors.red, size: 48),
                           const SizedBox(height: 16),
                           Text(
                             'Camera Error:\n${error.errorDetails?.message ?? error.errorCode.name}',
@@ -271,18 +287,23 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                   height: 250,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: allVerified ? const Color(0xFF4CAF50) : const Color(0xFFE8A838), 
-                      width: 3
-                    ),
+                        color: allVerified
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFE8A838),
+                        width: 3),
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 Positioned(
                   bottom: 20,
                   child: Text(
-                    allVerified ? 'All items verified!' : 'Scan items to verify',
+                    allVerified
+                        ? 'Set quantities and complete return'
+                        : 'Scan items to verify',
                     style: TextStyle(
-                      color: allVerified ? const Color(0xFF4CAF50) : const Color(0xFFEEEEF5),
+                      color: allVerified
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFEEEEF5),
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       shadows: const [
@@ -298,7 +319,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
               ],
             ),
           ),
-          
+
           // List of items (bottom half)
           Expanded(
             flex: 5,
@@ -333,7 +354,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                         final item = widget.items[index];
                         final isVerified = _verifiedIds.contains(item.id) ||
                             _returnedQuantities.containsKey(item.id);
-                        
+
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
@@ -341,43 +362,98 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                             color: const Color(0xFF252533),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isVerified ? const Color(0xFF4CAF50) : Colors.transparent,
+                              color: isVerified
+                                  ? const Color(0xFF4CAF50)
+                                  : Colors.transparent,
                               width: 1,
                             ),
                           ),
                           child: Row(
                             children: [
                               Icon(
-                                isVerified ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                color: isVerified ? const Color(0xFF4CAF50) : const Color(0xFF9999AA),
+                                isVerified
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                color: isVerified
+                                    ? const Color(0xFF4CAF50)
+                                    : const Color(0xFF9999AA),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
-                                  item.lineType == 'serialized'
-                                      ? (item.serialNo ?? item.equipmentId)
-                                      : '${item.equipmentId} × ${item.qty.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFEEEEF5),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.equipmentName ?? 'Equipment',
+                                      style: const TextStyle(
+                                        color: Color(0xFFEEEEF5),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      item.lineType == 'serialized'
+                                          ? 'QR / barcode: ${item.serialNo ?? 'Unknown'}'
+                                          : 'Quantity: ${item.qty.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        color: Color(0xFF9999AA),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
+                              if (item.assetId != null && !isVerified)
+                                TextButton(
+                                  onPressed: () => setState(
+                                    () => _verifiedIds.add(item.id),
+                                  ),
+                                  child: const Text('Mark returned'),
+                                ),
+                              if (item.assetId != null)
+                                PopupMenuButton<String>(
+                                  initialValue:
+                                      _serializedDispositions[item.id] ??
+                                          'returned',
+                                  onSelected: (value) => setState(() {
+                                    _serializedDispositions[item.id] = value;
+                                    if (value == 'lost') {
+                                      _verifiedIds.add(item.id);
+                                    }
+                                  }),
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(
+                                        value: 'returned',
+                                        child: Text('Returned')),
+                                    PopupMenuItem(
+                                        value: 'damaged',
+                                        child: Text('Damaged')),
+                                    PopupMenuItem(
+                                        value: 'lost', child: Text('Lost')),
+                                  ],
+                                ),
                             ],
                           ),
                         );
                       },
                     ),
                   ),
-                  
+
                   if (quantityItems.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: OutlinedButton.icon(
-                        onPressed: () => _setReturnedQuantity(quantityItems.first),
-                        icon: const Icon(Icons.numbers_rounded),
-                        label: const Text('Set returned quantity'),
+                      child: Column(
+                        children: quantityItems
+                            .map((item) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _setReturnedQuantity(item),
+                                    icon: const Icon(Icons.numbers_rounded),
+                                    label: Text(
+                                        'Set returned quantity: ${item.equipmentId}'),
+                                  ),
+                                ))
+                            .toList(),
                       ),
                     ),
 
@@ -390,18 +466,24 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
                         icon: const Icon(Icons.check_circle_outline_rounded),
                         label: _isCheckingIn
                             ? const SizedBox(
-                                width: 18, height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F0F13)),
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Color(0xFF0F0F13)),
                               )
                             : const Text('Complete Return'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFE8A838),
                           foregroundColor: const Color(0xFF0F0F13),
-                          disabledBackgroundColor: const Color(0xFFE8A838).withOpacity(0.3),
+                          disabledBackgroundColor:
+                              const Color(0xFFE8A838).withOpacity(0.3),
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: (allVerified && !_isCheckingIn) ? _handleCheckin : null,
+                        onPressed: (allVerified && !_isCheckingIn)
+                            ? _handleCheckin
+                            : null,
                       ),
                     ),
                   ),
@@ -429,9 +511,12 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
           decoration: InputDecoration(labelText: 'Out of ${item.qty.toInt()}'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, int.tryParse(controller.text)),
+            onPressed: () =>
+                Navigator.pop(dialogContext, int.tryParse(controller.text)),
             child: const Text('Save'),
           ),
         ],
@@ -441,7 +526,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
     if (returned == null) return;
     if (returned < 0 || returned > item.qty.toInt()) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid returned quantity.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Enter a valid returned quantity.')));
       }
       return;
     }
@@ -452,7 +538,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
         content: Text(missing == 0
             ? 'Returned ${item.qty.toInt()} item(s)'
             : 'Returned $returned — $missing item(s) missing'),
-        backgroundColor: missing == 0 ? const Color(0xFF4CAF50) : const Color(0xFFE8A838),
+        backgroundColor:
+            missing == 0 ? const Color(0xFF4CAF50) : const Color(0xFFE8A838),
       ));
     }
   }
@@ -464,6 +551,13 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen> wit
             'returned_quantity': _returnedQuantities[item.id] ?? 0,
           })
       .toList();
+
+  List<Map<String, dynamic>> _serializedDispositionPayload() => _verifiedIds
+      .map((id) => {
+            'rental_item_id': id,
+            'disposition': _serializedDispositions[id] ?? 'returned',
+          })
+      .toList();
 }
 
 String _newReturnRequestId() {
@@ -471,6 +565,7 @@ String _newReturnRequestId() {
   final bytes = List<int>.generate(16, (_) => random.nextInt(256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  final hex =
+      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
