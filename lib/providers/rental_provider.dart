@@ -62,40 +62,6 @@ class RentalListNotifier extends AsyncNotifier<List<Rental>> {
     }
   }
 
-  Future<String> createAndCheckout({
-    required String clientId,
-    required DateTime startDate,
-    required DateTime endDate,
-    required List<RentalLineInput> lines,
-    required double depositAmount,
-    required bool depositPaid,
-    required List<String> parentAssetIds,
-    required String requestId,
-    String? notes,
-    List<String> overrideAssetIds = const [],
-    String? overrideReason,
-  }) async {
-    try {
-      final id = await _repo.createAndCheckout(
-        clientId: clientId,
-        startDate: startDate,
-        endDate: endDate,
-        lines: lines,
-        depositAmount: depositAmount,
-        depositPaid: depositPaid,
-        parentAssetIds: parentAssetIds,
-        requestId: requestId,
-        notes: notes,
-        overrideAssetIds: overrideAssetIds,
-        overrideReason: overrideReason,
-      );
-      ref.invalidateSelf();
-      return id;
-    } catch (e, st) {
-      state = AsyncError(e, st);
-      rethrow;
-    }
-  }
 
   /// Updates rental details and refreshes.
   Future<void> updateRental(Rental rental) async {

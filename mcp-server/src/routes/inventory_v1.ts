@@ -10,7 +10,10 @@ const clientSchema = z.object({ full_name: z.string().min(1), phone: z.string().
 const clientPatchSchema = clientSchema.partial().strict();
 const assetLinkEntrySchema = z.object({ barcode: z.string().trim().min(1), name: z.string().trim().min(1).max(200).optional() }).strict();
 const assetLinkSchema = z.object({ parent: assetLinkEntrySchema, children: z.array(assetLinkEntrySchema).min(1).max(200) }).strict();
-const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative().default(0), deposit_paid: z.boolean().default(false), notes: z.string().optional(), items: z.array(z.object({ product_id: z.string().uuid(), asset_id: z.string().uuid().optional(), quantity: z.number().int().positive().optional() })).min(1), override_asset_ids: z.array(z.string().uuid()).default([]), override_reason: z.string().trim().min(1).max(500).optional() });
+const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative().default(0), deposit_paid: z.boolean().default(false), notes: z.string().optional(), items: z.array(z.object({ product_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()).min(1) }).strict();
+const barcodeScanSchema = z.object({ barcode: z.string().trim().min(1).max(200) }).strict();
+const returnScanSchema = barcodeScanSchema.extend({ disposition: z.enum(["returned", "damaged", "lost"]) }).strict();
+const quantityCheckoutSchema = z.object({ quantity_lines: z.array(z.object({ rental_item_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()) }).strict();
 const quantityAdjustmentSchema = z.object({ product_id: z.string().uuid(), expected_on_hand_quantity: z.number().int().nonnegative(), notes: z.string().trim().max(500).optional() }).strict();
 const serializedDispositionSchema = z.object({ rental_item_id: z.string().uuid(), disposition: z.enum(["returned", "damaged", "lost"]) }).strict();
 
@@ -35,7 +38,7 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   app.patch("/api/v1/clients/:id",auth,async(req,res)=>{try{const parsed=clientPatchSchema.safeParse(req.body);if(!parsed.success){res.status(422).json(fail("VALIDATION_ERROR","Invalid client payload"));return;}const rows=await database.patch<Array<unknown>>(`clients?id=eq.${encodeURIComponent(String(req.params.id))}`,parsed.data);if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Client not found"));return;}res.json(ok({client:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals",auth,async(_req,res)=>{try{res.json(ok({rentals:await database.get("rentals?select=*,clients(full_name)&order=created_at.desc")}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals/:id",auth,async(req,res)=>{try{const rows=await database.get<Array<unknown>>(`rentals?id=eq.${encodeURIComponent(String(req.params.id))}&select=*,clients(full_name)`);if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Rental not found"));return;}res.json(ok({rental:rows[0]}));}catch(error){handleError(res,error);}});
-  app.get("/api/v1/rentals/:id/items",auth,async(req,res)=>{try{res.json(ok({items:await database.get(`rental_items?rental_id=eq.${encodeURIComponent(String(req.params.id))}&select=*,products(name),assets(asset_id)`)}));}catch(error){handleError(res,error);}});
+  app.get("/api/v1/rentals/:id/items",auth,async(req,res)=>{try{res.json(ok({items:await database.get(`rental_items?rental_id=eq.${encodeURIComponent(String(req.params.id))}&select=*,products(name,tracking_mode),assets(asset_id)`)}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals/:id/parent-snapshots/:parentId",auth,async(req,res)=>{try{res.json(ok({snapshots:await database.get(`rental_parent_snapshots?rental_id=eq.${encodeURIComponent(String(req.params.id))}&parent_asset_id=eq.${encodeURIComponent(String(req.params.parentId))}&select=child_asset_id`)}));}catch(error){handleError(res,error);}});
   app.patch("/api/v1/rental-items/:id/damage",auth,async(req,res)=>{try{const rows=await database.patch<Array<unknown>>(`rental_items?id=eq.${encodeURIComponent(String(req.params.id))}`,{damage_notes:String(req.body?.damage_notes??"")});if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Rental item not found"));return;}res.json(ok({item:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/barcodes/:identifier", auth, async (req, res) => {
@@ -62,8 +65,7 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
       handleError(res, error);
     }
   });
-  app.post("/api/v1/rentals", auth, async (req: SupabaseAuthenticatedRequest, res) => { const parsed=rentalSchema.safeParse(req.body); if(!parsed.success || !req.user){res.status(422).json(fail("VALIDATION_ERROR","Invalid rental payload"));return;} try {res.status(201).json(ok({rental:await database.rpc("create_rental",{p_client_id:parsed.data.client_id,p_created_by:req.user.id,p_start_date:parsed.data.start_date,p_end_date:parsed.data.end_date,p_deposit_amount:parsed.data.deposit_amount,p_deposit_paid:parsed.data.deposit_paid,p_notes:parsed.data.notes??"",p_items:parsed.data.items,p_override_asset_ids:parsed.data.override_asset_ids,p_override_reason:null})}));}catch(error){handleError(res,error);} });
-  app.post("/api/v1/rentals/quick-checkout", auth, async (req: SupabaseAuthenticatedRequest, res) => { const parsed=rentalSchema.safeParse(req.body); const requestId=String(req.header("idempotency-key")??""); const parentAssetIds=req.body?.parent_asset_ids??[]; if(!parsed.success || !req.user || !isUuid(requestId) || !isUuidArray(parentAssetIds)){res.status(422).json(fail("VALIDATION_ERROR","Invalid quick checkout payload"));return;} try {res.status(201).json(ok({rental:await database.rpc("create_and_checkout_rental",{p_client_id:parsed.data.client_id,p_created_by:req.user.id,p_start_date:parsed.data.start_date,p_end_date:parsed.data.end_date,p_deposit_amount:parsed.data.deposit_amount,p_deposit_paid:parsed.data.deposit_paid,p_notes:parsed.data.notes??"",p_items:parsed.data.items,p_parent_asset_ids:parentAssetIds,p_request_id:requestId,p_override_asset_ids:parsed.data.override_asset_ids,p_override_reason:null})}));}catch(error){handleError(res,error);} });
+  app.post("/api/v1/rentals", auth, async (req: SupabaseAuthenticatedRequest, res) => { const parsed=rentalSchema.safeParse(req.body); if(!parsed.success || !req.user){res.status(422).json(fail("VALIDATION_ERROR","Invalid rental payload"));return;} try {res.status(201).json(ok({rental:await database.rpc("create_rental",{p_client_id:parsed.data.client_id,p_created_by:req.user.id,p_start_date:parsed.data.start_date,p_end_date:parsed.data.end_date,p_deposit_amount:parsed.data.deposit_amount,p_deposit_paid:parsed.data.deposit_paid,p_notes:parsed.data.notes??"",p_items:parsed.data.items,p_override_asset_ids:[],p_override_reason:null})}));}catch(error){handleError(res,error);} });
   
   app.patch("/api/v1/products/:id", auth, async (req, res) => {
     try {
@@ -79,29 +81,10 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
       handleError(res, error);
     }
   });
-  app.post("/api/v1/rentals/:id/checkout", auth, async (req: SupabaseAuthenticatedRequest,res)=>{
-    const requestId = String(req.header("idempotency-key") ?? "");
-    const verifiedRentalItemIds = req.body?.verified_rental_item_ids;
-    const parentAssetIds = req.body?.parent_asset_ids ?? [];
-    if (!req.user || !isUuid(requestId) || !isUuidArray(verifiedRentalItemIds) || !isUuidArray(parentAssetIds)) {
-      res.status(422).json(fail("VALIDATION_ERROR", "A request ID and scanned rental item IDs are required"));
-      return;
-    }
-    try { res.json(ok({rental:await database.rpc("confirm_checkout",{p_rental_id:req.params.id,p_created_by:req.user.id,p_verified_rental_item_ids:verifiedRentalItemIds,p_parent_asset_ids:parentAssetIds,p_request_id:requestId})})); }
-    catch(error){handleError(res,error);}
-  });
-  app.post("/api/v1/rentals/:id/return", auth, async (req: SupabaseAuthenticatedRequest,res)=>{
-    const requestId = String(req.header("idempotency-key") ?? "");
-    const verifiedRentalItemIds = req.body?.verified_rental_item_ids;
-    const returnedQuantities = req.body?.returned_quantities;
-    const serializedDispositions = serializedDispositionSchema.array().safeParse(req.body?.serialized_dispositions ?? []);
-    if (!req.user || !isUuid(requestId) || !isUuidArray(verifiedRentalItemIds) || !Array.isArray(returnedQuantities) || !serializedDispositions.success) {
-      res.status(422).json(fail("VALIDATION_ERROR", "A request ID, scanned rental item IDs, and return quantities are required"));
-      return;
-    }
-    try { res.json(ok({rental:await database.rpc("confirm_return",{p_rental_id:req.params.id,p_created_by:req.user.id,p_verified_rental_item_ids:verifiedRentalItemIds,p_returned_quantities:returnedQuantities,p_request_id:requestId,p_serialized_dispositions:serializedDispositions.data})})); }
-    catch(error){handleError(res,error);}
-  });
+  app.post("/api/v1/rentals/:id/checkout/scan", auth, async (req: SupabaseAuthenticatedRequest,res)=>{ const parsed=barcodeScanSchema.safeParse(req.body); if(!req.user || !parsed.success){res.status(422).json(fail("VALIDATION_ERROR","A barcode is required"));return;} try {res.json(ok({assignment:await database.rpc("scan_rental_checkout_asset",{p_rental_id:req.params.id,p_created_by:req.user.id,p_barcode:parsed.data.barcode})}));}catch(error){handleError(res,error);} });
+  app.post("/api/v1/rentals/:id/checkout/complete", auth, async (req: SupabaseAuthenticatedRequest,res)=>{ const parsed=quantityCheckoutSchema.safeParse(req.body); const requestId=String(req.header("idempotency-key")??""); if(!req.user || !parsed.success || !isUuid(requestId)){res.status(422).json(fail("VALIDATION_ERROR","A request ID and exact quantity lines are required"));return;} try {res.json(ok({rental:await database.rpc("complete_rental_checkout",{p_rental_id:req.params.id,p_created_by:req.user.id,p_quantity_checkout:parsed.data.quantity_lines,p_request_id:requestId})}));}catch(error){handleError(res,error);} });
+  app.post("/api/v1/rentals/:id/return/scan", auth, async (req: SupabaseAuthenticatedRequest,res)=>{ const parsed=returnScanSchema.safeParse(req.body); if(!req.user || !parsed.success){res.status(422).json(fail("VALIDATION_ERROR","A barcode and outcome are required"));return;} try {res.json(ok({assignment:await database.rpc("scan_rental_return_asset",{p_rental_id:req.params.id,p_created_by:req.user.id,p_barcode:parsed.data.barcode,p_disposition:parsed.data.disposition})}));}catch(error){handleError(res,error);} });
+  app.post("/api/v1/rentals/:id/return/complete", auth, async (req: SupabaseAuthenticatedRequest,res)=>{ const requestId=String(req.header("idempotency-key")??""); if(!req.user || !isUuid(requestId) || !Array.isArray(req.body?.quantity_lines)){res.status(422).json(fail("VALIDATION_ERROR","A request ID and quantity return lines are required"));return;} try {res.json(ok({rental:await database.rpc("complete_rental_return",{p_rental_id:req.params.id,p_created_by:req.user.id,p_returned_quantities:req.body.quantity_lines,p_request_id:requestId})}));}catch(error){handleError(res,error);} });
   app.post("/api/v1/inventory/quantity-adjustments", auth, async (req: SupabaseAuthenticatedRequest, res) => {
     const parsed = quantityAdjustmentSchema.safeParse(req.body);
     if (!parsed.success || !req.user) { res.status(422).json(fail("VALIDATION_ERROR", "Invalid inventory adjustment")); return; }

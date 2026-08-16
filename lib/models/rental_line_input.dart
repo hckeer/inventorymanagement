@@ -21,8 +21,7 @@ class RentalLineInput {
   Map<String, dynamic> toMcpJson() {
     return {
       'product_id': itemCode,
-      if (assetId != null) 'asset_id': assetId,
-      if (assetId == null) 'quantity': qty.toInt(),
+      'quantity': qty.toInt(),
     };
   }
 }

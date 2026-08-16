@@ -11,7 +11,6 @@ import '../../providers/category_provider.dart';
 import '../../models/client.dart';
 import '../../models/category.dart';
 import '../../models/equipment.dart';
-import '../../models/equipment_detail.dart';
 import '../../models/rental_line_input.dart';
 import '../../core/mcp_client.dart';
 import '../../core/extensions.dart';
@@ -49,7 +48,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       (sum, line) =>
           sum +
           (line.dailyRate *
-              (line.lineType == 'quantity' ? line.qty : 1) *
+              (line.assetId == null ? line.qty : 1) *
               _rentalDays));
 
   @override
@@ -327,7 +326,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
 
     Equipment? selectedItem;
-    EquipmentSerial? selectedSerial;
+    double quantity = 1;
 
     final added = await showDialog<bool>(
       context: context,
@@ -336,7 +335,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
           return AlertDialog(
             backgroundColor: const Color(0xFF1A1A24),
             title: const Text(
-              'Add serialized line',
+              'Add serialized equipment',
               style: TextStyle(color: Color(0xFFEEEEF5)),
             ),
             content: SizedBox(
@@ -360,64 +359,37 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     onChanged: (item) {
                       setDialogState(() {
                         selectedItem = item;
-                        selectedSerial = null;
                       });
                     },
                   ),
                   if (selectedItem != null) ...[
                     const SizedBox(height: 12),
-                    FutureBuilder(
-                      future: ref
-                          .read(equipmentRepositoryProvider)
-                          .getDetail(id: selectedItem!.id),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done) {
-                          return const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          );
-                        }
-                        if (snapshot.hasError) {
-                          return Text(
-                            snapshot.error.toString(),
-                            style: const TextStyle(color: Color(0xFFFF5252)),
-                          );
-                        }
-                        final allSerials = snapshot.data?.serials ?? [];
-                        final serials = allSerials.where((s) {
-                          final status = (s.status ?? '').toLowerCase();
-                          return status == 'available';
-                        }).toList();
-                        if (allSerials.isEmpty) {
-                          return const Text(
-                            'No serials for this item.',
-                            style: TextStyle(color: Color(0xFF9999AA)),
-                          );
-                        }
-                        if (serials.isEmpty) {
-                          return const Text(
-                            'No available serials.',
-                            style: TextStyle(color: Color(0xFF9999AA)),
-                          );
-                        }
-                        return DropdownButtonFormField<EquipmentSerial>(
-                          value: selectedSerial,
-                          decoration:
-                              const InputDecoration(labelText: 'Serial No'),
-                          dropdownColor: const Color(0xFF1A1A24),
-                          style: const TextStyle(color: Color(0xFFEEEEF5)),
-                          items: serials
-                              .map(
-                                (serial) => DropdownMenuItem(
-                                  value: serial,
-                                  child: Text(serial.name),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) =>
-                              setDialogState(() => selectedSerial = value),
-                        );
-                      },
+                    Text(
+                      '${selectedItem!.availableAssetCount} available',
+                      style: const TextStyle(color: Color(0xFF9999AA)),
+                    ),
+                    Row(
+                      children: [
+                        const Text('Qty',
+                            style: TextStyle(color: Color(0xFF9999AA))),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          color: const Color(0xFF9999AA),
+                          onPressed: quantity > 1
+                              ? () => setDialogState(() => quantity -= 1)
+                              : null,
+                        ),
+                        Text(quantity.toStringAsFixed(0)),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          color: const Color(0xFFE8A838),
+                          onPressed:
+                              quantity < selectedItem!.availableAssetCount
+                                  ? () => setDialogState(() => quantity += 1)
+                                  : null,
+                        ),
+                      ],
                     ),
                   ],
                 ],
@@ -429,9 +401,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: selectedItem != null &&
-                        selectedSerial != null &&
-                        selectedSerial != null
+                onPressed: selectedItem != null
                     ? () => Navigator.pop(ctx, true)
                     : null,
                 child: const Text('Add'),
@@ -442,28 +412,31 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
 
-    if (added == true && selectedItem != null && selectedSerial != null) {
+    if (added == true && selectedItem != null) {
       setState(() {
         _lines.add(
           RentalLineInput(
             lineType: 'serialized',
             itemCode: selectedItem!.id,
             itemName: selectedItem!.name,
-            serialNo: selectedSerial!.name,
-            assetId: selectedSerial!.id,
-            qty: 1,
+            qty: quantity,
             dailyRate: selectedItem!.dailyRate,
           ),
         );
       });
-      await _offerCheckoutSuggestions(selectedItem!.id, allEquipment);
+      await _offerCheckoutSuggestions(
+        selectedItem!.id,
+        allEquipment,
+        multiplier: quantity.toInt(),
+      );
     }
   }
 
   Future<void> _offerCheckoutSuggestions(
     String serializedProductId,
-    List<Equipment> allEquipment,
-  ) async {
+    List<Equipment> allEquipment, {
+    int multiplier = 1,
+  }) async {
     try {
       final data = await mcpClient.get(
         '/products/${Uri.encodeComponent(serializedProductId)}/checkout-suggestions',
@@ -547,7 +520,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
           if (item == null) continue;
           _addOrIncreaseQuantityLine(
             item,
-            (suggestion['default_quantity'] as num? ?? 1).toInt(),
+            (suggestion['default_quantity'] as num? ?? 1).toInt() * multiplier,
           );
         }
       });
@@ -694,7 +667,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<void> _submit({bool checkoutNow = false}) async {
+  Future<void> _submit() async {
     if (_selectedClient == null) {
       _showError('Select a client');
       return;
@@ -710,33 +683,15 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
     setState(() => _loading = true);
     try {
-      final rentalId = checkoutNow
-          ? await ref.read(rentalListProvider.notifier).createAndCheckout(
-                clientId: _selectedClient!.id,
-                startDate: _startDate,
-                endDate: _endDate,
-                lines: _lines,
-                depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
-                depositPaid: _depositPaid,
-                notes: _notesCtrl.text.trim().isEmpty
-                    ? null
-                    : _notesCtrl.text.trim(),
-                overrideAssetIds: _overrideAssetIds.toList(),
-                parentAssetIds: _parentAssetIds.toList(),
-                requestId: _newRequestId(),
-              )
-          : await ref.read(rentalListProvider.notifier).createAndSubmit(
-                clientId: _selectedClient!.id,
-                startDate: _startDate,
-                endDate: _endDate,
-                lines: _lines,
-                depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
-                depositPaid: _depositPaid,
-                notes: _notesCtrl.text.trim().isEmpty
-                    ? null
-                    : _notesCtrl.text.trim(),
-                overrideAssetIds: _overrideAssetIds.toList(),
-              );
+      final rentalId = await ref.read(rentalListProvider.notifier).createAndSubmit(
+            clientId: _selectedClient!.id,
+            startDate: _startDate,
+            endDate: _endDate,
+            lines: _lines,
+            depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
+            depositPaid: _depositPaid,
+            notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          );
 
       ref.invalidate(equipmentListProvider);
 
@@ -763,7 +718,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       return;
     }
     if (_lines.isNotEmpty) {
-      _showError('Use “Checkout entered lines now” for lines already added.');
+      _showError('Lines are already added. Create the rental when ready.');
       return;
     }
     setState(() => _scanCheckoutMode = true);
@@ -854,9 +809,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _scanCheckoutMode
-                            ? null
-                            : () => _addSerializedLine(allEquipment),
+                        onPressed: () => _addSerializedLine(allEquipment),
                         icon: const Icon(Icons.qr_code, size: 18),
                         label: const Text('Serial line'),
                       ),
@@ -864,26 +817,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _scanCheckoutMode
-                            ? null
-                            : () => _addQtyLine(qtyItems),
+                        onPressed: () => _addQtyLine(qtyItems),
                         icon: const Icon(Icons.inventory_2_outlined, size: 18),
                         label: const Text('Qty line'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _scanCheckoutMode
-                            ? null
-                            : () => _scanRentalLine(allEquipment, qtyItems),
-                        icon:
-                            const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                        label: const Text('Scan'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFE8A838),
-                          foregroundColor: const Color(0xFF0F0F13),
-                        ),
                       ),
                     ),
                   ],
@@ -891,7 +827,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 const SizedBox(height: 12),
                 if (_lines.isEmpty)
                   const Text(
-                    'Add serialized equipment, enter a quantity, or scan an asset barcode.',
+                    'Choose an equipment model and quantity. Physical barcodes are scanned only at checkout.',
                     style: TextStyle(color: Color(0xFF9999AA), fontSize: 13),
                   )
                 else
@@ -921,9 +857,11 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                                     ),
                                   ),
                                   Text(
-                                    line.lineType == 'serialized'
+                                    line.assetId != null
                                         ? 'Serial: ${line.serialNo}'
-                                        : 'Qty: ${line.qty.toStringAsFixed(0)}',
+                                        : line.lineType == 'serialized'
+                                        ? 'Qty: ${line.qty.toStringAsFixed(0)} — physical units chosen at checkout'
+                                            : 'Qty: ${line.qty.toStringAsFixed(0)}',
                                     style: const TextStyle(
                                       color: Color(0xFF9999AA),
                                       fontSize: 12,
@@ -1050,7 +988,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _loading || _scanCheckoutMode ? null : _submit,
+                    onPressed: _loading ? null : _submit,
                     child: _loading
                         ? const SizedBox(
                             height: 20,
@@ -1063,70 +1001,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         : const Text('Create rental'),
                   ),
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _loading || _scanCheckoutMode
-                        ? null
-                        : () => _submit(checkoutNow: true),
-                    icon: const Icon(Icons.outbox_rounded),
-                    label: const Text('Checkout entered lines now'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (_scanCheckoutMode) ...[
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8A838).withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFFE8A838).withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      '${_lines.length} item${_lines.length == 1 ? '' : 's'} scanned. Scan more, then checkout all scanned items.',
-                      style: const TextStyle(color: Color(0xFFEEEEF5)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _loading
-                          ? null
-                          : () => _scanNextCheckoutItem(allEquipment, qtyItems),
-                      icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text('Scan next item'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _loading || _lines.isEmpty
-                          ? null
-                          : () => _submit(checkoutNow: true),
-                      icon: const Icon(Icons.outbox_rounded),
-                      label: const Text('Checkout all scanned items'),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _loading ? null : _cancelScanCheckout,
-                    child: const Text('Cancel scan checkout'),
-                  ),
-                ] else
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _loading
-                          ? null
-                          : () => _startScanCheckout(allEquipment, qtyItems),
-                      icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text('Scan & checkout multiple items'),
-                    ),
-                  ),
                 const SizedBox(height: 40),
               ],
             );

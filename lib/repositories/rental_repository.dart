@@ -75,41 +75,48 @@ class RentalRepository {
     }
   }
 
-  Future<String> createAndCheckout({
-    required String clientId,
-    required DateTime startDate,
-    required DateTime endDate,
-    required List<RentalLineInput> lines,
-    required double depositAmount,
-    required bool depositPaid,
-    required List<String> parentAssetIds,
-    required String requestId,
-    String? notes,
-    List<String> overrideAssetIds = const [],
-    String? overrideReason,
+  Future<void> scanCheckoutAsset({
+    required String rentalId,
+    required String barcode,
   }) async {
     try {
-      final data = await mcpClient.post(
-        '/rentals/quick-checkout',
-        headers: {'Idempotency-Key': requestId},
-        body: {
-          'client_id': clientId,
-          'start_date': _formatDate(startDate),
-          'end_date': _formatDate(endDate),
-          'deposit_amount': depositAmount,
-          'deposit_paid': depositPaid,
-          if (notes != null) 'notes': notes,
-          'items': lines.map((line) => line.toMcpJson()).toList(),
-          'parent_asset_ids': parentAssetIds,
-          'override_asset_ids': overrideAssetIds,
-          if (overrideReason != null) 'override_reason': overrideReason,
-        },
-      );
-      final id = (data['rental'] as Map<String, dynamic>?)?['id'] as String?;
-      if (id == null || id.isEmpty) {
-        throw Exception('Quick checkout did not return a rental.');
-      }
-      return id;
+      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/checkout/scan', body: {'barcode': barcode});
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
+  Future<void> completeCheckout({
+    required String rentalId,
+    required List<Map<String, dynamic>> quantityLines,
+    required String requestId,
+  }) async {
+    try {
+      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/checkout/complete', headers: {'Idempotency-Key': requestId}, body: {'quantity_lines': quantityLines});
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
+  Future<void> scanReturnAsset({
+    required String rentalId,
+    required String barcode,
+    required String disposition,
+  }) async {
+    try {
+      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/return/scan', body: {'barcode': barcode, 'disposition': disposition});
+    } on McpApiException catch (e) {
+      throw Exception(humanizeError(e.message));
+    }
+  }
+
+  Future<void> completeReturn({
+    required String rentalId,
+    required List<Map<String, dynamic>> quantityLines,
+    required String requestId,
+  }) async {
+    try {
+      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/return/complete', headers: {'Idempotency-Key': requestId}, body: {'quantity_lines': quantityLines});
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
     }

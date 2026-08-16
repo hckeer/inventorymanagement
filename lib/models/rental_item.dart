@@ -36,7 +36,9 @@ class RentalItem {
       equipmentName:
           (json['products'] as Map<String, dynamic>?)?['name'] as String?,
       assetId: json['asset_id'] as String?,
-      lineType: json['asset_id'] == null ? 'quantity' : 'serialized',
+      lineType: (json['products'] as Map<String, dynamic>?)?['tracking_mode']
+              as String? ??
+          (json['asset_id'] == null ? 'quantity' : 'serialized'),
       serialNo:
           (json['assets'] as Map<String, dynamic>?)?['asset_id'] as String?,
       qty: (json['quantity'] as num?)?.toDouble() ?? 1,

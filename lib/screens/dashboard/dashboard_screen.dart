@@ -149,13 +149,6 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 10),
                     _QuickAction(
-                      icon: Icons.qr_code_scanner_rounded,
-                      label: 'Quick Checkout',
-                      subtitle: 'Scan gear and check it out now',
-                      onTap: () => context.push('/rentals/quick-checkout'),
-                    ),
-                    const SizedBox(height: 10),
-                    _QuickAction(
                       icon: Icons.videocam_rounded,
                       label: 'Add Equipment',
                       subtitle: 'Register a new item in inventory',

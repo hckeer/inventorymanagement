@@ -105,6 +105,19 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
                 'Scan this equipment\'s individual barcode.',
               );
             }
+            if (assetId == null) {
+              throw McpApiException(
+                'UNKNOWN_BARCODE',
+                'Scan an individual physical asset barcode.',
+              );
+            }
+            final disposition = await _chooseDisposition();
+            if (disposition == null) return;
+            await ref.read(rentalRepositoryProvider).scanReturnAsset(
+                  rentalId: widget.rentalId,
+                  barcode: rawValue,
+                  disposition: disposition,
+                );
             if (assetId != null) {
               final snapshotData = await mcpClient.get(
                 '/rentals/${Uri.encodeComponent(widget.rentalId)}/parent-snapshots/${Uri.encodeComponent(assetId)}',
@@ -206,11 +219,9 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
   Future<void> _handleCheckin() async {
     setState(() => _isCheckingIn = true);
     try {
-      await ref.read(rentalListProvider.notifier).markReturned(
+      await ref.read(rentalRepositoryProvider).completeReturn(
             rentalId: widget.rentalId,
-            verifiedRentalItemIds: _verifiedIds.toList(),
-            returnedQuantities: _quantityReturnPayload(),
-            serializedDispositions: _serializedDispositionPayload(),
+            quantityLines: _quantityReturnPayload(),
             requestId: _requestId,
           );
       ref.invalidate(rentalDetailProvider(widget.rentalId));
@@ -234,7 +245,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final quantityItems = widget.items.where((item) => item.assetId == null);
+    final quantityItems = widget.items.where((item) => item.lineType == 'quantity');
     final allVerified =
         quantityItems.every((item) => _returnedQuantities.containsKey(item.id));
 
@@ -545,7 +556,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
   }
 
   List<Map<String, dynamic>> _quantityReturnPayload() => widget.items
-      .where((item) => item.assetId == null)
+      .where((item) => item.lineType == 'quantity')
       .map((item) => {
             'rental_item_id': item.id,
             'returned_quantity': _returnedQuantities[item.id] ?? 0,
@@ -558,6 +569,27 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
             'disposition': _serializedDispositions[id] ?? 'returned',
           })
       .toList();
+
+  Future<String?> _chooseDisposition() => showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Return outcome'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'lost'),
+              child: const Text('Lost'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'damaged'),
+              child: const Text('Damaged'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, 'returned'),
+              child: const Text('Returned'),
+            ),
+          ],
+        ),
+      );
 }
 
 String _newReturnRequestId() {

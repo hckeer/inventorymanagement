@@ -12,7 +12,6 @@ import 'screens/equipment/container_builder_screen.dart';
 import 'screens/equipment/scanner_screen.dart';
 import 'screens/rentals/checkout_scanner_screen.dart';
 import 'screens/rentals/checkin_scanner_screen.dart';
-import 'screens/rentals/manifest_return_scanner_screen.dart';
 import 'models/rental_item.dart';
 import 'screens/clients/client_list_screen.dart';
 import 'screens/clients/client_detail_screen.dart';
@@ -48,15 +47,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       // ── Auth ──────────────────────────────────────────────────────────────
-      GoRoute(
-        path: '/manifest-return',
-        builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>;
-          return ManifestReturnScannerScreen(
-              rentalId: extra['rentalId'] as String,
-              barcodes: extra['barcodes'] as List<String>);
-        },
-      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
@@ -168,12 +158,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'new',
                 builder: (context, state) =>
-                    const RentalFormScreen(rentalId: null, quickCheckout: true),
-              ),
-              GoRoute(
-                path: 'quick-checkout',
-                builder: (context, state) =>
-                    const RentalFormScreen(rentalId: null, quickCheckout: true),
+                    const RentalFormScreen(rentalId: null),
               ),
               GoRoute(
                 path: ':id',

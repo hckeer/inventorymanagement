@@ -36,6 +36,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
 
   // Set of rental item IDs that have been verified.
   final Set<String> _verifiedIds = {};
+  final Map<String, int> _serializedScans = {};
   final Set<String> _scannedParentAssetIds = {};
   final String _requestId = _newRequestId();
 
@@ -102,6 +103,17 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
                 'Scan this equipment\'s individual barcode.',
               );
             }
+            if (assetId == null || productId == null) {
+              throw McpApiException('UNKNOWN_BARCODE', 'Scan an individual physical asset barcode.');
+            }
+            await ref.read(rentalRepositoryProvider).scanCheckoutAsset(
+                  rentalId: widget.rentalId,
+                  barcode: rawValue,
+                );
+            setState(() {
+              _serializedScans[productId] =
+                  (_serializedScans[productId] ?? 0) + 1;
+            });
             if (assetId != null && children.isNotEmpty) {
               _scannedParentAssetIds.add(assetId);
             }
@@ -183,10 +195,15 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
   Future<void> _handleCheckout() async {
     setState(() => _isCheckingOut = true);
     try {
-      await ref.read(rentalListProvider.notifier).checkout(
+      await ref.read(rentalRepositoryProvider).completeCheckout(
             rentalId: widget.rentalId,
-            verifiedRentalItemIds: _verifiedIds.toList(),
-            parentAssetIds: _scannedParentAssetIds.toList(),
+            quantityLines: widget.items
+                .where((item) => item.lineType == 'quantity')
+                .map((item) => {
+                      'rental_item_id': item.id,
+                      'quantity': item.qty.toInt(),
+                    })
+                .toList(),
             requestId: _requestId,
           );
       ref.invalidate(rentalDetailProvider(widget.rentalId));
@@ -210,7 +227,12 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final allVerified = _verifiedIds.length == widget.items.length;
+    final allVerified = widget.items.where((item) => item.lineType == 'serialized').every(
+          (item) => (_serializedScans[item.productId] ?? 0) == item.qty.toInt(),
+        ) &&
+        widget.items.where((item) => item.lineType == 'quantity').every(
+          (item) => _verifiedIds.contains(item.id),
+        );
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
@@ -326,7 +348,10 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
                       itemCount: widget.items.length,
                       itemBuilder: (context, index) {
                         final item = widget.items[index];
-                        final isVerified = _verifiedIds.contains(item.id);
+                        final isVerified = item.lineType == 'serialized'
+                            ? (_serializedScans[item.productId] ?? 0) ==
+                                item.qty.toInt()
+                            : _verifiedIds.contains(item.id);
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -355,7 +380,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
                               Expanded(
                                 child: Text(
                                   item.lineType == 'serialized'
-                                      ? '${item.equipmentName ?? 'Equipment'} · ${item.serialNo ?? 'Unknown'}'
+                                      ? '${item.equipmentName ?? 'Equipment'} · ${_serializedScans[item.productId] ?? 0}/${item.qty.toInt()} scanned'
                                       : '${item.equipmentName ?? 'Equipment'} × ${item.qty.toStringAsFixed(0)}',
                                   style: const TextStyle(
                                     color: Color(0xFFEEEEF5),
@@ -371,13 +396,13 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
                     ),
                   ),
 
-                  if (widget.items.any((item) => item.assetId == null))
+                  if (widget.items.any((item) => item.lineType == 'quantity'))
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: OutlinedButton.icon(
                         onPressed: () => setState(() {
                           _verifiedIds.addAll(widget.items
-                              .where((item) => item.assetId == null)
+                              .where((item) => item.lineType == 'quantity')
                               .map((item) => item.id));
                         }),
                         icon: const Icon(Icons.numbers_rounded),
