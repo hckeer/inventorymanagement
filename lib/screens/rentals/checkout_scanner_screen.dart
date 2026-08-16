@@ -224,14 +224,23 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
     }
   }
 
+  int _requestedSerializedQuantity(String productId) => widget.items
+      .where(
+        (item) => item.lineType == 'serialized' && item.productId == productId,
+      )
+      .fold(0, (total, item) => total + item.qty.toInt());
+
+  bool _isSerializedProductComplete(String productId) =>
+      (_serializedScans[productId] ?? 0) ==
+      _requestedSerializedQuantity(productId);
+
   @override
   Widget build(BuildContext context) {
     final allVerified = widget.items
             .where((item) => item.lineType == 'serialized')
-            .every(
-              (item) =>
-                  (_serializedScans[item.productId] ?? 0) == item.qty.toInt(),
-            ) &&
+            .map((item) => item.productId)
+            .toSet()
+            .every(_isSerializedProductComplete) &&
         widget.items.where((item) => item.lineType == 'quantity').every(
               (item) => _verifiedIds.contains(item.id),
             );
@@ -351,8 +360,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
                       itemBuilder: (context, index) {
                         final item = widget.items[index];
                         final isVerified = item.lineType == 'serialized'
-                            ? (_serializedScans[item.productId] ?? 0) ==
-                                item.qty.toInt()
+                            ? _isSerializedProductComplete(item.productId)
                             : _verifiedIds.contains(item.id);
 
                         return Container(
@@ -382,7 +390,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
                               Expanded(
                                 child: Text(
                                   item.lineType == 'serialized'
-                                      ? '${item.equipmentName ?? 'Equipment'} · ${_serializedScans[item.productId] ?? 0}/${item.qty.toInt()} scanned'
+                                      ? '${item.equipmentName ?? 'Equipment'} · ${_serializedScans[item.productId] ?? 0}/${_requestedSerializedQuantity(item.productId)} scanned'
                                       : '${item.equipmentName ?? 'Equipment'} × ${item.qty.toStringAsFixed(0)}',
                                   style: const TextStyle(
                                     color: Color(0xFFEEEEF5),
