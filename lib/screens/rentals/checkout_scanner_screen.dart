@@ -104,7 +104,8 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
               );
             }
             if (assetId == null || productId == null) {
-              throw McpApiException('UNKNOWN_BARCODE', 'Scan an individual physical asset barcode.');
+              throw McpApiException('UNKNOWN_BARCODE',
+                  'Scan an individual physical asset barcode.');
             }
             await ref.read(rentalRepositoryProvider).scanCheckoutAsset(
                   rentalId: widget.rentalId,
@@ -210,9 +211,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
       ref.invalidate(rentalItemsProvider(widget.rentalId));
       ref.invalidate(equipmentListProvider);
       ref.invalidate(dashboardStatsProvider);
-      if (mounted) {
-        context.pop(); // Go back to rental detail
-      }
+      if (mounted) context.go('/rentals/${widget.rentalId}');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -227,12 +226,15 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final allVerified = widget.items.where((item) => item.lineType == 'serialized').every(
-          (item) => (_serializedScans[item.productId] ?? 0) == item.qty.toInt(),
-        ) &&
+    final allVerified = widget.items
+            .where((item) => item.lineType == 'serialized')
+            .every(
+              (item) =>
+                  (_serializedScans[item.productId] ?? 0) == item.qty.toInt(),
+            ) &&
         widget.items.where((item) => item.lineType == 'quantity').every(
-          (item) => _verifiedIds.contains(item.id),
-        );
+              (item) => _verifiedIds.contains(item.id),
+            );
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),

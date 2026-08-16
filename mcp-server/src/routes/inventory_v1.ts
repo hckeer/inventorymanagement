@@ -10,7 +10,10 @@ const clientSchema = z.object({ full_name: z.string().min(1), phone: z.string().
 const clientPatchSchema = clientSchema.partial().strict();
 const assetLinkEntrySchema = z.object({ barcode: z.string().trim().min(1), name: z.string().trim().min(1).max(200).optional() }).strict();
 const assetLinkSchema = z.object({ parent: assetLinkEntrySchema, children: z.array(assetLinkEntrySchema).min(1).max(200) }).strict();
-const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative().default(0), deposit_paid: z.boolean().default(false), notes: z.string().optional(), items: z.array(z.object({ product_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()).min(1) }).strict();
+// `override_asset_ids` and `override_reason` are accepted only for a short
+// compatibility window with the previous APK.  They are deliberately ignored:
+// a booking reserves product capacity, never a specific physical asset.
+const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative().default(0), deposit_paid: z.boolean().default(false), notes: z.string().optional(), items: z.array(z.object({ product_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()).min(1), override_asset_ids: z.array(z.string().uuid()).optional(), override_reason: z.string().optional() }).strict();
 const barcodeScanSchema = z.object({ barcode: z.string().trim().min(1).max(200) }).strict();
 const returnScanSchema = barcodeScanSchema.extend({ disposition: z.enum(["returned", "damaged", "lost"]) }).strict();
 const quantityCheckoutSchema = z.object({ quantity_lines: z.array(z.object({ rental_item_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()) }).strict();

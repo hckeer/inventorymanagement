@@ -201,6 +201,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
   }
 
   bool _matchesStatusFilter(Equipment equipment) {
+    if (_selectedStatus.isEmpty) return true;
     return switch (_selectedStatus) {
       kStatusAvailable => equipment.status == kStatusAvailable ||
           equipment.availableAssetCount > 0,

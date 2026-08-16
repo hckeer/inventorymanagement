@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,9 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/rental_provider.dart';
 import '../../providers/client_provider.dart';
 import '../../providers/equipment_provider.dart';
-import '../../providers/category_provider.dart';
 import '../../models/client.dart';
-import '../../models/category.dart';
 import '../../models/equipment.dart';
 import '../../models/rental_line_input.dart';
 import '../../core/mcp_client.dart';
@@ -36,10 +32,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
   bool _depositPaid = false;
   final _notesCtrl = TextEditingController();
   final _depositCtrl = TextEditingController(text: '0');
-  final Set<String> _overrideAssetIds = {};
-  final Set<String> _parentAssetIds = {};
   bool _loading = false;
-  bool _scanCheckoutMode = false;
 
   int get _rentalDays => _endDate.difference(_startDate).inDays.clamp(1, 9999);
 
@@ -86,235 +79,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
         _endDate = picked;
       }
     });
-  }
-
-  /// Scans one physical asset or a container. Containers expand into their
-  /// parent and child assets, so every piece is reserved by this rental.
-  Future<void> _scanRentalLine(
-    List<Equipment> equipment,
-    List<Equipment> qtyItems,
-  ) async {
-    final barcode = await context.push<String>('/scanner');
-    if (barcode == null || !mounted) return;
-    try {
-      final data =
-          await mcpClient.get('/barcodes/${Uri.encodeComponent(barcode)}');
-      if (!mounted) return;
-      final lookup = data['lookup'] as Map<String, dynamic>?;
-      if (lookup == null || lookup['result_type'] == 'unknown') {
-        final line = await _registerUnknownQr(barcode);
-        if (!mounted || line == null) return;
-        setState(() => _lines.add(line));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('New serialized item added to inventory and rental'),
-          backgroundColor: Color(0xFF4CAF50),
-        ));
-        return;
-      }
-      if (lookup['result_type'] == 'product') {
-        if (lookup['tracking_mode'] != 'quantity') {
-          _showError('Scan the physical serial barcode for this equipment.');
-          return;
-        }
-        final productId = lookup['product_id'] as String?;
-        final product =
-            equipment.where((item) => item.id == productId).firstOrNull;
-        if (product == null) {
-          _showError(
-              'Scanned equipment is no longer available. Refresh and try again.');
-          return;
-        }
-        await _addQtyLine(qtyItems, initialItem: product);
-        return;
-      }
-
-      final assets = <Map<String, dynamic>>[
-        {
-          'asset_id': lookup['asset_id'],
-          'product_id': lookup['product_id'],
-          'barcode': barcode,
-          'status': lookup['asset_status'],
-        },
-        ...((lookup['children'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()),
-      ];
-      if ((lookup['asset_id'] as String?) != null &&
-          (lookup['children'] as List<dynamic>? ?? []).isNotEmpty) {
-        _parentAssetIds.add(lookup['asset_id'] as String);
-      }
-
-      final additions = <RentalLineInput>[];
-      for (final asset in assets) {
-        final assetId = asset['asset_id'] as String?;
-        final productId = asset['product_id'] as String?;
-        if (assetId == null || productId == null) continue;
-        final status = asset['status'] as String?;
-        if (status != null && status != 'available') {
-          final physicallyHere = await _confirmPhysicalAvailability();
-          if (!physicallyHere) return;
-          _overrideAssetIds.add(assetId);
-        }
-        if (_lines.any((line) => line.assetId == assetId) ||
-            additions.any((line) => line.assetId == assetId)) {
-          continue;
-        }
-        final product =
-            equipment.where((item) => item.id == productId).firstOrNull;
-        if (product == null) {
-          _showError(
-              'Scanned equipment is no longer available. Refresh and try again.');
-          return;
-        }
-        additions.add(RentalLineInput(
-          lineType: 'serialized',
-          itemCode: productId,
-          itemName: product.name,
-          serialNo: asset['barcode'] as String? ?? barcode,
-          assetId: assetId,
-          qty: 1,
-          dailyRate: product.dailyRate,
-        ));
-      }
-
-      if (additions.isEmpty) {
-        _showError('This equipment is already in the rental.');
-        return;
-      }
-      setState(() => _lines.addAll(additions));
-      for (final productId in additions.map((line) => line.itemCode).toSet()) {
-        await _offerCheckoutSuggestions(productId, equipment);
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          additions.length == 1
-              ? 'Equipment added'
-              : 'Container added with ${additions.length - 1} item(s)',
-        ),
-        backgroundColor: const Color(0xFF4CAF50),
-      ));
-    } on McpApiException catch (error) {
-      _showError(error.message);
-    } catch (_) {
-      _showError('Could not add the scanned equipment. Try again.');
-    }
-  }
-
-  Future<bool> _confirmPhysicalAvailability() async {
-    final physicallyHere = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Is this item physically here?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('No')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Yes'),
-          ),
-        ],
-      ),
-    );
-    return physicallyHere ?? false;
-  }
-
-  Future<RentalLineInput?> _registerUnknownQr(String qrValue) async {
-    final nameController = TextEditingController();
-    try {
-      final categories = await ref.read(categoryListProvider.future);
-      if (!mounted) return null;
-      Category? category;
-      final shouldCreate = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (dialogContext, setDialogState) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A24),
-            title: const Text('Add scanned QR to inventory'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  qrValue,
-                  style: const TextStyle(color: Color(0xFF9999AA)),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration:
-                      const InputDecoration(labelText: 'Equipment name *'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<Category>(
-                  value: category,
-                  decoration:
-                      const InputDecoration(labelText: 'Category (optional)'),
-                  dropdownColor: const Color(0xFF1A1A24),
-                  style: const TextStyle(color: Color(0xFFEEEEF5)),
-                  items: categories
-                      .map((item) => DropdownMenuItem(
-                            value: item,
-                            child: Text(item.name),
-                          ))
-                      .toList(),
-                  onChanged: (value) => setDialogState(() => category = value),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (nameController.text.trim().isEmpty) return;
-                  Navigator.pop(dialogContext, true);
-                },
-                child: const Text('Save & add'),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (shouldCreate != true) return null;
-
-      final equipment = await ref.read(equipmentRepositoryProvider).create(
-            equipment: Equipment(
-              id: '',
-              name: nameController.text.trim(),
-              categoryId: category?.id ?? '',
-              status: 'available',
-              dailyRate: 0,
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-            trackingMode: 'serialized',
-            initialQuantity: 0,
-            serialNo: qrValue,
-          );
-      final detail = await ref
-          .read(equipmentRepositoryProvider)
-          .getDetail(id: equipment.id);
-      final serial =
-          detail.serials.where((item) => item.name == qrValue).firstOrNull;
-      if (serial == null) {
-        throw Exception('The new QR asset was not returned by inventory.');
-      }
-      ref.invalidate(equipmentListProvider);
-      return RentalLineInput(
-        lineType: 'serialized',
-        itemCode: equipment.id,
-        itemName: equipment.name,
-        serialNo: serial.name,
-        assetId: serial.id,
-        qty: 1,
-        dailyRate: equipment.dailyRate,
-      );
-    } finally {
-      nameController.dispose();
-    }
   }
 
   Future<void> _addSerializedLine(List<Equipment> allEquipment) async {
@@ -667,7 +431,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool openCheckoutScanner = false}) async {
     if (_selectedClient == null) {
       _showError('Select a client');
       return;
@@ -683,19 +447,35 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
     setState(() => _loading = true);
     try {
-      final rentalId = await ref.read(rentalListProvider.notifier).createAndSubmit(
-            clientId: _selectedClient!.id,
-            startDate: _startDate,
-            endDate: _endDate,
-            lines: _lines,
-            depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
-            depositPaid: _depositPaid,
-            notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          );
+      final rentalId =
+          await ref.read(rentalListProvider.notifier).createAndSubmit(
+                clientId: _selectedClient!.id,
+                startDate: _startDate,
+                endDate: _endDate,
+                lines: _lines,
+                depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
+                depositPaid: _depositPaid,
+                notes: _notesCtrl.text.trim().isEmpty
+                    ? null
+                    : _notesCtrl.text.trim(),
+              );
 
       ref.invalidate(equipmentListProvider);
 
-      if (mounted) context.go('/rentals/$rentalId');
+      if (!mounted) return;
+      if (!openCheckoutScanner) {
+        context.go('/rentals/$rentalId');
+        return;
+      }
+
+      // The rental is created with model quantities first.  The checkout
+      // scanner then binds the real barcode-labelled assets to that rental.
+      final items = await ref.read(rentalItemsProvider(rentalId).future);
+      if (!mounted) return;
+      context.pushReplacement('/checkout-scanner', extra: {
+        'rentalId': rentalId,
+        'items': items,
+      });
     } catch (e) {
       if (mounted) {
         _showError(e.toString().replaceFirst('Exception: ', ''));
@@ -703,42 +483,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _startScanCheckout(
-    List<Equipment> equipment,
-    List<Equipment> quantityItems,
-  ) async {
-    if (_selectedClient == null) {
-      _showError('Select a client before scanning');
-      return;
-    }
-    if (_endDate.isBefore(_startDate)) {
-      _showError('End date must be on or after start date');
-      return;
-    }
-    if (_lines.isNotEmpty) {
-      _showError('Lines are already added. Create the rental when ready.');
-      return;
-    }
-    setState(() => _scanCheckoutMode = true);
-    await _scanRentalLine(equipment, quantityItems);
-  }
-
-  Future<void> _scanNextCheckoutItem(
-    List<Equipment> equipment,
-    List<Equipment> quantityItems,
-  ) async {
-    await _scanRentalLine(equipment, quantityItems);
-  }
-
-  void _cancelScanCheckout() {
-    setState(() {
-      _scanCheckoutMode = false;
-      _lines.clear();
-      _overrideAssetIds.clear();
-      _parentAssetIds.clear();
-    });
   }
 
   void _showError(String msg) {
@@ -860,7 +604,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                                     line.assetId != null
                                         ? 'Serial: ${line.serialNo}'
                                         : line.lineType == 'serialized'
-                                        ? 'Qty: ${line.qty.toStringAsFixed(0)} — physical units chosen at checkout'
+                                            ? 'Qty: ${line.qty.toStringAsFixed(0)} — physical units chosen at checkout'
                                             : 'Qty: ${line.qty.toStringAsFixed(0)}',
                                     style: const TextStyle(
                                       color: Color(0xFF9999AA),
@@ -1001,6 +745,17 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                         : const Text('Create rental'),
                   ),
                 ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () => _submit(openCheckoutScanner: true),
+                    icon: const Icon(Icons.qr_code_scanner_rounded),
+                    label: const Text('Create & scan checkout'),
+                  ),
+                ),
                 const SizedBox(height: 40),
               ],
             );
@@ -1009,16 +764,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
   }
-}
-
-String _newRequestId() {
-  final random = Random.secure();
-  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex =
-      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
 class _StepHeader extends StatelessWidget {
