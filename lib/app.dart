@@ -12,6 +12,7 @@ import 'screens/equipment/container_builder_screen.dart';
 import 'screens/equipment/scanner_screen.dart';
 import 'screens/rentals/checkout_scanner_screen.dart';
 import 'screens/rentals/checkin_scanner_screen.dart';
+import 'screens/rentals/direct_checkout_scanner_screen.dart';
 import 'models/rental_item.dart';
 import 'screens/clients/client_list_screen.dart';
 import 'screens/clients/client_detail_screen.dart';
@@ -66,6 +67,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             items: extra['items'] as List<RentalItem>,
           );
         },
+      ),
+      GoRoute(
+        path: '/direct-checkout-scanner',
+        builder: (context, state) => const DirectCheckoutScannerScreen(),
       ),
       GoRoute(
         path: '/checkin-scanner',

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,7 @@ import '../../core/mcp_client.dart';
 import '../../core/extensions.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/app_error.dart';
+import 'direct_checkout_scanner_screen.dart';
 
 class RentalFormScreen extends ConsumerStatefulWidget {
   const RentalFormScreen({
@@ -431,7 +434,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     }
   }
 
-  Future<void> _submit({bool openCheckoutScanner = false}) async {
+  Future<void> _submit() async {
     if (_selectedClient == null) {
       _showError('Select a client');
       return;
@@ -462,24 +465,73 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
 
       ref.invalidate(equipmentListProvider);
 
-      if (!mounted) return;
-      if (!openCheckoutScanner) {
-        context.go('/rentals/$rentalId');
-        return;
-      }
-
-      // The rental is created with model quantities first.  The checkout
-      // scanner then binds the real barcode-labelled assets to that rental.
-      final items = await ref.read(rentalItemsProvider(rentalId).future);
-      if (!mounted) return;
-      context.pushReplacement('/checkout-scanner', extra: {
-        'rentalId': rentalId,
-        'items': items,
-      });
+      if (mounted) context.go('/rentals/$rentalId');
     } catch (e) {
       if (mounted) {
         _showError(e.toString().replaceFirst('Exception: ', ''));
       }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _scanAndCheckout() async {
+    if (_selectedClient == null) {
+      _showError('Select a client before scanning');
+      return;
+    }
+    if (_endDate.isBefore(_startDate)) {
+      _showError('End date must be on or after start date');
+      return;
+    }
+    if (_lines.isNotEmpty) {
+      _showError('Clear the manual lines before using scan checkout.');
+      return;
+    }
+
+    final draft = await context.push<DirectCheckoutDraft>(
+      '/direct-checkout-scanner',
+    );
+    if (draft == null || !mounted) return;
+
+    setState(() => _loading = true);
+    try {
+      final rentalId =
+          await ref.read(rentalListProvider.notifier).createAndSubmit(
+                clientId: _selectedClient!.id,
+                startDate: _startDate,
+                endDate: _endDate,
+                lines: draft.lines,
+                depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
+                depositPaid: _depositPaid,
+                notes: _notesCtrl.text.trim().isEmpty
+                    ? null
+                    : _notesCtrl.text.trim(),
+              );
+      for (final barcode in draft.serializedBarcodes) {
+        await ref.read(rentalRepositoryProvider).scanCheckoutAsset(
+              rentalId: rentalId,
+              barcode: barcode,
+            );
+      }
+      final items = await ref.read(rentalItemsProvider(rentalId).future);
+      await ref.read(rentalRepositoryProvider).completeCheckout(
+            rentalId: rentalId,
+            quantityLines: items
+                .where((item) => item.lineType == 'quantity')
+                .map((item) => {
+                      'rental_item_id': item.id,
+                      'quantity': item.qty.toInt(),
+                    })
+                .toList(),
+            requestId: _newRequestId(),
+          );
+      ref.invalidate(equipmentListProvider);
+      ref.invalidate(rentalItemsProvider(rentalId));
+      ref.invalidate(rentalDetailProvider(rentalId));
+      if (mounted) context.go('/rentals/$rentalId');
+    } catch (e) {
+      if (mounted) _showError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -749,11 +801,9 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: _loading
-                        ? null
-                        : () => _submit(openCheckoutScanner: true),
+                    onPressed: _loading ? null : _scanAndCheckout,
                     icon: const Icon(Icons.qr_code_scanner_rounded),
-                    label: const Text('Create & scan checkout'),
+                    label: const Text('Scan & create checkout'),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -764,6 +814,16 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
   }
+}
+
+String _newRequestId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex =
+      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
 class _StepHeader extends StatelessWidget {
