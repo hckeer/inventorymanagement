@@ -92,10 +92,6 @@ class _DirectCheckoutScannerScreenState
           throw McpApiException(
               'INVALID_BARCODE', 'This is not a serialized rental asset.');
         }
-        if (lookup['asset_status'] != 'available') {
-          throw McpApiException(
-              'ASSET_UNAVAILABLE', 'This asset is not available.');
-        }
         if ((lookup['children'] as List<dynamic>? ?? []).isNotEmpty) {
           throw McpApiException('CONTAINER_BARCODE',
               'Scan each physical asset in this container.');

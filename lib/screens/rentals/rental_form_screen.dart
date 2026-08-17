@@ -484,11 +484,6 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       _showError('End date must be on or after start date');
       return;
     }
-    if (_lines.isNotEmpty) {
-      _showError('Clear the manual lines before using scan checkout.');
-      return;
-    }
-
     final draft = await context.push<DirectCheckoutDraft>(
       '/direct-checkout-scanner',
     );
@@ -501,7 +496,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 clientId: _selectedClient!.id,
                 startDate: _startDate,
                 endDate: _endDate,
-                lines: draft.lines,
+                lines: _mergeManualAndScannedLines(_lines, draft.lines),
                 depositAmount: double.tryParse(_depositCtrl.text) ?? 0,
                 depositPaid: _depositPaid,
                 notes: _notesCtrl.text.trim().isEmpty
@@ -535,6 +530,30 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  List<RentalLineInput> _mergeManualAndScannedLines(
+    List<RentalLineInput> manual,
+    List<RentalLineInput> scanned,
+  ) {
+    final merged = <String, RentalLineInput>{
+      for (final line in manual) line.itemCode: line,
+    };
+    for (final line in scanned) {
+      final existing = merged[line.itemCode];
+      if (existing == null) {
+        merged[line.itemCode] = line;
+        continue;
+      }
+      merged[line.itemCode] = RentalLineInput(
+        lineType: existing.lineType,
+        itemCode: existing.itemCode,
+        itemName: existing.itemName,
+        qty: existing.qty > line.qty ? existing.qty : line.qty,
+        dailyRate: existing.dailyRate,
+      );
+    }
+    return merged.values.toList(growable: false);
   }
 
   void _showError(String msg) {

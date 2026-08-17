@@ -236,11 +236,9 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final allVerified = widget.items
-            .where((item) => item.lineType == 'serialized')
-            .map((item) => item.productId)
-            .toSet()
-            .every(_isSerializedProductComplete) &&
+    final hasSerializedLines =
+        widget.items.any((item) => item.lineType == 'serialized');
+    final allVerified = (!hasSerializedLines || _serializedScans.isNotEmpty) &&
         widget.items.where((item) => item.lineType == 'quantity').every(
               (item) => _verifiedIds.contains(item.id),
             );
