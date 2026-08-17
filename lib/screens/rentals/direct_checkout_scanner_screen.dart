@@ -76,7 +76,13 @@ class _DirectCheckoutScannerScreenState
           await mcpClient.get('/barcodes/${Uri.encodeComponent(barcode)}');
       final lookup = response['lookup'] as Map<String, dynamic>?;
       if (lookup == null || lookup['result_type'] == 'unknown') {
-        throw McpApiException('UNKNOWN_BARCODE', 'Unknown barcode.');
+        final created = await _registerUnknownBarcode(barcode);
+        if (created == null) return;
+        _serializedBarcodes.add(barcode);
+        _addToCart(created);
+        _message('${created.name} added to inventory and checkout',
+            const Color(0xFF4CAF50));
+        return;
       }
 
       final productId = lookup['product_id'] as String?;
@@ -107,17 +113,11 @@ class _DirectCheckoutScannerScreenState
         }
       }
 
-      setState(() {
-        final entry = _products.putIfAbsent(
-          productId,
-          () => _ScannedProduct(
-            productId: productId,
-            name: productName,
-            trackingMode: trackingMode,
-          ),
-        );
-        entry.quantity++;
-      });
+      _addToCart(_ScannedProduct(
+        productId: productId,
+        name: productName,
+        trackingMode: trackingMode,
+      ));
       _message('$productName added', const Color(0xFF4CAF50));
     } on McpApiException catch (error) {
       _message(error.message, const Color(0xFFFF5252));
@@ -129,6 +129,84 @@ class _DirectCheckoutScannerScreenState
         if (mounted) setState(() => _inFlight.remove(barcode));
       });
       if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  void _addToCart(_ScannedProduct item) {
+    setState(() {
+      final entry = _products.putIfAbsent(
+        item.productId,
+        () => item,
+      );
+      entry.quantity++;
+    });
+  }
+
+  Future<_ScannedProduct?> _registerUnknownBarcode(String barcode) async {
+    final nameController = TextEditingController();
+    try {
+      final shouldCreate = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Add scanned equipment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                barcode,
+                style: const TextStyle(color: Color(0xFF9999AA)),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Equipment/model name *',
+                  helperText:
+                      'A serialized asset will use this scanned barcode.',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.trim().isNotEmpty) {
+                  Navigator.pop(dialogContext, true);
+                }
+              },
+              child: const Text('Add & continue'),
+            ),
+          ],
+        ),
+      );
+      if (shouldCreate != true) return null;
+
+      final response = await mcpClient.post('/products', body: {
+        'name': nameController.text.trim(),
+        'tracking_mode': 'serialized',
+        'daily_rate': 0,
+        'initial_quantity': 0,
+        'asset_barcode': barcode,
+      });
+      final product = response['product'] as Map<String, dynamic>?;
+      final productId = product?['id'] as String?;
+      final productName = product?['name'] as String?;
+      if (productId == null || productName == null) {
+        throw McpApiException(
+            'CREATE_FAILED', 'New equipment was not returned by inventory.');
+      }
+      return _ScannedProduct(
+        productId: productId,
+        name: productName,
+        trackingMode: 'serialized',
+      );
+    } finally {
+      nameController.dispose();
     }
   }
 
