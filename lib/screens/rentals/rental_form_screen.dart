@@ -92,8 +92,8 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       return;
     }
 
-    Equipment? selectedItem;
-    double quantity = 1;
+    final selectedIds = <String>{};
+    final quantities = <String, double>{};
 
     final added = await showDialog<bool>(
       context: context,
@@ -110,55 +110,64 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  DropdownButtonFormField<Equipment>(
-                    value: selectedItem,
-                    decoration: const InputDecoration(labelText: 'Item'),
-                    dropdownColor: const Color(0xFF1A1A24),
-                    style: const TextStyle(color: Color(0xFFEEEEF5)),
-                    items: serializedItems
-                        .map(
-                          (item) => DropdownMenuItem(
-                            value: item,
-                            child: Text(item.name),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (item) {
-                      setDialogState(() {
-                        selectedItem = item;
-                      });
-                    },
+                  const Text(
+                    'Select one or more equipment models.',
+                    style: TextStyle(color: Color(0xFF9999AA)),
                   ),
-                  if (selectedItem != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      '${selectedItem!.availableAssetCount} available',
-                      style: const TextStyle(color: Color(0xFF9999AA)),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 320,
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: serializedItems.map((item) {
+                        final selected = selectedIds.contains(item.id);
+                        final quantity = quantities[item.id] ?? 1;
+                        return Column(
+                          children: [
+                            CheckboxListTile(
+                              value: selected,
+                              onChanged: (value) => setDialogState(() {
+                                if (value ?? false) {
+                                  selectedIds.add(item.id);
+                                  quantities.putIfAbsent(item.id, () => 1);
+                                } else {
+                                  selectedIds.remove(item.id);
+                                }
+                              }),
+                              title: Text(item.name),
+                              subtitle:
+                                  Text('${item.availableAssetCount} available'),
+                              controlAffinity: ListTileControlAffinity.leading,
+                            ),
+                            if (selected)
+                              Row(
+                                children: [
+                                  const SizedBox(width: 56),
+                                  const Text('Qty'),
+                                  IconButton(
+                                    icon:
+                                        const Icon(Icons.remove_circle_outline),
+                                    onPressed: quantity > 1
+                                        ? () => setDialogState(() =>
+                                            quantities[item.id] = quantity - 1)
+                                        : null,
+                                  ),
+                                  Text(quantity.toStringAsFixed(0)),
+                                  IconButton(
+                                    icon: const Icon(Icons.add_circle_outline),
+                                    onPressed: quantity <
+                                            item.availableAssetCount
+                                        ? () => setDialogState(() =>
+                                            quantities[item.id] = quantity + 1)
+                                        : null,
+                                  ),
+                                ],
+                              ),
+                          ],
+                        );
+                      }).toList(),
                     ),
-                    Row(
-                      children: [
-                        const Text('Qty',
-                            style: TextStyle(color: Color(0xFF9999AA))),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline),
-                          color: const Color(0xFF9999AA),
-                          onPressed: quantity > 1
-                              ? () => setDialogState(() => quantity -= 1)
-                              : null,
-                        ),
-                        Text(quantity.toStringAsFixed(0)),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline),
-                          color: const Color(0xFFE8A838),
-                          onPressed:
-                              quantity < selectedItem!.availableAssetCount
-                                  ? () => setDialogState(() => quantity += 1)
-                                  : null,
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -168,7 +177,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: selectedItem != null
+                onPressed: selectedIds.isNotEmpty
                     ? () => Navigator.pop(ctx, true)
                     : null,
                 child: const Text('Add'),
@@ -179,23 +188,27 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
 
-    if (added == true && selectedItem != null) {
+    if (added == true && selectedIds.isNotEmpty) {
       setState(() {
-        _lines.add(
-          RentalLineInput(
+        for (final item
+            in serializedItems.where((item) => selectedIds.contains(item.id))) {
+          _lines.add(RentalLineInput(
             lineType: 'serialized',
-            itemCode: selectedItem!.id,
-            itemName: selectedItem!.name,
-            qty: quantity,
-            dailyRate: selectedItem!.dailyRate,
-          ),
-        );
+            itemCode: item.id,
+            itemName: item.name,
+            qty: quantities[item.id] ?? 1,
+            dailyRate: item.dailyRate,
+          ));
+        }
       });
-      await _offerCheckoutSuggestions(
-        selectedItem!.id,
-        allEquipment,
-        multiplier: quantity.toInt(),
-      );
+      for (final item
+          in serializedItems.where((item) => selectedIds.contains(item.id))) {
+        await _offerCheckoutSuggestions(
+          item.id,
+          allEquipment,
+          multiplier: (quantities[item.id] ?? 1).toInt(),
+        );
+      }
     }
   }
 
@@ -342,8 +355,10 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       return;
     }
 
-    Equipment? selectedItem = initialItem;
-    double qty = 1;
+    final selectedIds = <String>{if (initialItem != null) initialItem.id};
+    final quantities = <String, double>{
+      if (initialItem != null) initialItem.id: 1,
+    };
 
     final added = await showDialog<bool>(
       context: context,
@@ -358,47 +373,57 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<Equipment>(
-                  value: selectedItem,
-                  decoration: const InputDecoration(labelText: 'Item'),
-                  dropdownColor: const Color(0xFF1A1A24),
-                  style: const TextStyle(color: Color(0xFFEEEEF5)),
-                  items: qtyItems
-                      .map(
-                        (item) => DropdownMenuItem(
-                          value: item,
-                          child: Text(item.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (item) =>
-                      setDialogState(() => selectedItem = item),
+                const Text(
+                  'Select one or more items and set each quantity.',
+                  style: TextStyle(color: Color(0xFF9999AA)),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Text('Qty',
-                        style: TextStyle(color: Color(0xFF9999AA))),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle_outline),
-                      color: const Color(0xFF9999AA),
-                      onPressed:
-                          qty > 1 ? () => setDialogState(() => qty -= 1) : null,
-                    ),
-                    Text(
-                      qty.toStringAsFixed(0),
-                      style: const TextStyle(
-                        color: Color(0xFFEEEEF5),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline),
-                      color: const Color(0xFFE8A838),
-                      onPressed: () => setDialogState(() => qty += 1),
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 320,
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: qtyItems.map((item) {
+                      final selected = selectedIds.contains(item.id);
+                      final quantity = quantities[item.id] ?? 1;
+                      return Column(
+                        children: [
+                          CheckboxListTile(
+                            value: selected,
+                            onChanged: (value) => setDialogState(() {
+                              if (value ?? false) {
+                                selectedIds.add(item.id);
+                                quantities.putIfAbsent(item.id, () => 1);
+                              } else {
+                                selectedIds.remove(item.id);
+                              }
+                            }),
+                            title: Text(item.name),
+                            controlAffinity: ListTileControlAffinity.leading,
+                          ),
+                          if (selected)
+                            Row(
+                              children: [
+                                const SizedBox(width: 56),
+                                const Text('Qty'),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                  onPressed: quantity > 1
+                                      ? () => setDialogState(() =>
+                                          quantities[item.id] = quantity - 1)
+                                      : null,
+                                ),
+                                Text(quantity.toStringAsFixed(0)),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: () => setDialogState(
+                                      () => quantities[item.id] = quantity + 1),
+                                ),
+                              ],
+                            ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
                 ),
               ],
             ),
@@ -408,7 +433,7 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: selectedItem != null
+                onPressed: selectedIds.isNotEmpty
                     ? () => Navigator.pop(ctx, true)
                     : null,
                 child: const Text('Add'),
@@ -419,17 +444,12 @@ class _RentalFormScreenState extends ConsumerState<RentalFormScreen> {
       ),
     );
 
-    if (added == true && selectedItem != null) {
+    if (added == true && selectedIds.isNotEmpty) {
       setState(() {
-        _lines.add(
-          RentalLineInput(
-            lineType: 'qty',
-            itemCode: selectedItem!.id,
-            itemName: selectedItem!.name,
-            qty: qty,
-            dailyRate: selectedItem!.dailyRate,
-          ),
-        );
+        for (final item
+            in qtyItems.where((item) => selectedIds.contains(item.id))) {
+          _addOrIncreaseQuantityLine(item, (quantities[item.id] ?? 1).toInt());
+        }
       });
     }
   }

@@ -156,6 +156,20 @@ describe("checkout suggestions schema", () => {
   });
 });
 
+describe("physical checkout authority schema", () => {
+  it("accepts a known physical barcode despite stale availability state", () => {
+    const sql = readFileSync(
+      resolve(migrationsDirectory, physicalCheckoutAuthorityMigration()),
+      "utf8",
+    );
+
+    expect(sql).toMatch(/create or replace function public\.scan_rental_checkout_asset/i);
+    expect(sql).toMatch(/Closed by a later physical barcode checkout/i);
+    expect(sql).not.toMatch(/v_asset\.status <> 'available'/i);
+    expect(sql).not.toMatch(/Asset is not available for checkout/i);
+  });
+});
+
 function productOperationsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_product_operations\.sql$/.test(name),
@@ -199,5 +213,11 @@ function stabilizationMigration(): string {
 function checkoutSuggestionsMigration(): string {
   return readdirSync(migrationsDirectory).find((name) =>
     /_checkout_suggestions\.sql$/.test(name),
+  ) ?? "";
+}
+
+function physicalCheckoutAuthorityMigration(): string {
+  return readdirSync(migrationsDirectory).find((name) =>
+    /_checkout_scans_are_physical_authority\.sql$/.test(name),
   ) ?? "";
 }

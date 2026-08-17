@@ -98,13 +98,22 @@ class RentalRepository {
     }
   }
 
-  Future<void> scanReturnAsset({
+  Future<String> scanReturnAsset({
     required String rentalId,
     required String barcode,
     required String disposition,
   }) async {
     try {
-      await mcpClient.post('/rentals/${Uri.encodeComponent(rentalId)}/return/scan', body: {'barcode': barcode, 'disposition': disposition});
+      final data = await mcpClient.post(
+        '/rentals/${Uri.encodeComponent(rentalId)}/return/scan',
+        body: {'barcode': barcode, 'disposition': disposition},
+      );
+      final assignment = data['assignment'] as Map<String, dynamic>?;
+      final rentalItemId = assignment?['rental_item_id'] as String?;
+      if (rentalItemId == null || rentalItemId.isEmpty) {
+        throw Exception('Return scan did not identify a rental item.');
+      }
+      return rentalItemId;
     } on McpApiException catch (e) {
       throw Exception(humanizeError(e.message));
     }

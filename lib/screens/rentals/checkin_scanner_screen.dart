@@ -36,8 +36,8 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
 
   // Set of rental item IDs that have been verified.
   final Set<String> _verifiedIds = {};
+  final Set<String> _returnedAssetIds = {};
   final Map<String, int> _returnedQuantities = {};
-  final Map<String, String> _serializedDispositions = {};
   final String _requestId = _newReturnRequestId();
 
   // Track recently processed barcodes so we don't spam the API
@@ -95,10 +95,6 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
 
           if (lookup != null && lookup['result_type'] != 'unknown') {
             final assetId = lookup['asset_id'] as String?;
-            final productId = lookup['product_id'] as String?;
-            final children = <dynamic>[
-              ...?(lookup['children'] as List<dynamic>?)
-            ];
             if (assetId == null && lookup['tracking_mode'] == 'serialized') {
               throw McpApiException(
                 'AMBIGUOUS_PRODUCT_BARCODE',
@@ -111,95 +107,51 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
                 'Scan an individual physical asset barcode.',
               );
             }
-            final disposition = await _chooseDisposition();
-            if (disposition == null) return;
-            await ref.read(rentalRepositoryProvider).scanReturnAsset(
-                  rentalId: widget.rentalId,
-                  barcode: rawValue,
-                  disposition: disposition,
-                );
-            if (assetId != null) {
-              final snapshotData = await mcpClient.get(
-                '/rentals/${Uri.encodeComponent(widget.rentalId)}/parent-snapshots/${Uri.encodeComponent(assetId)}',
-              );
-              for (final snapshot
-                  in snapshotData['snapshots'] as List<dynamic>? ?? []) {
-                children.add({
-                  'asset_id':
-                      (snapshot as Map<String, dynamic>)['child_asset_id']
-                });
-              }
+            if (_returnedAssetIds.contains(assetId)) {
+              _showNotInRentalOrVerified();
+              return;
             }
-
-            int newlyVerifiedCount = 0;
-
-            void verifyItem(String? aId, String? pId) {
-              RentalItem? match;
-              if (aId != null) {
-                match = widget.items
-                    .where((item) => item.assetId == aId)
-                    .firstOrNull;
-              } else if (pId != null) {
-                match = widget.items
-                    .where((item) =>
-                        item.productId == pId &&
-                        item.assetId == null &&
-                        !_verifiedIds.contains(item.id))
-                    .firstOrNull;
-              }
-
-              if (match != null && !_verifiedIds.contains(match.id)) {
-                setState(() {
-                  _verifiedIds.add(match!.id);
-                  newlyVerifiedCount++;
-                });
-              }
+            final rentalItemId =
+                await ref.read(rentalRepositoryProvider).scanReturnAsset(
+                      rentalId: widget.rentalId,
+                      barcode: rawValue,
+                      disposition: 'returned',
+                    );
+            if (!widget.items.any((item) => item.id == rentalItemId)) {
+              _showNotInRentalOrVerified();
+              return;
             }
-
-            if (assetId == null && productId != null) {
-              final quantityItem = widget.items
-                  .where((item) =>
-                      item.productId == productId && item.assetId == null)
-                  .firstOrNull;
-              if (quantityItem != null) {
-                await _setReturnedQuantity(quantityItem);
-                return;
-              }
-            }
-
-            // Verify parent
-            verifyItem(assetId, productId);
-
-            // Verify children
-            for (final child in children) {
-              final childAssetId = child['asset_id'] as String?;
-              final childProductId = child['product_id'] as String?;
-              verifyItem(childAssetId, childProductId);
-            }
-
+            setState(() {
+              _returnedAssetIds.add(assetId);
+              _verifiedIds.add(rentalItemId);
+            });
             if (mounted) {
-              if (newlyVerifiedCount > 0) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Verified $newlyVerifiedCount item(s)'),
-                  backgroundColor: const Color(0xFF4CAF50),
-                  duration: const Duration(seconds: 2),
-                ));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Item not in rental or already verified'),
-                  backgroundColor: Color(0xFFFF5252),
-                  duration: Duration(seconds: 2),
-                ));
-              }
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Item returned'),
+                backgroundColor: Color(0xFF4CAF50),
+                duration: Duration(seconds: 2),
+              ));
             }
+          } else {
+            throw McpApiException(
+              'UNKNOWN_BARCODE',
+              'Barcode not found.',
+            );
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Barcode lookup failed: $e'),
-              backgroundColor: const Color(0xFFFF5252),
-              duration: const Duration(seconds: 2),
-            ));
+            if (e
+                .toString()
+                .toLowerCase()
+                .contains('does not belong to this active rental')) {
+              _showNotInRentalOrVerified();
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Barcode lookup failed: $e'),
+                backgroundColor: const Color(0xFFFF5252),
+                duration: const Duration(seconds: 2),
+              ));
+            }
           }
         } finally {
           // Clear recent scans after a few seconds to allow rescanning if needed
@@ -217,6 +169,24 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
   }
 
   Future<void> _handleCheckin() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Complete return?'),
+        content: const Text('This will finalize the returned items.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Complete return'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _isCheckingIn = true);
     try {
       await ref.read(rentalRepositoryProvider).completeReturn(
@@ -245,8 +215,12 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final quantityItems = widget.items.where((item) => item.lineType == 'quantity');
-    final allVerified =
+    final quantityItems =
+        widget.items.where((item) => item.lineType == 'quantity');
+    final serializedCount = widget.items
+        .where((item) => item.lineType == 'serialized')
+        .fold<int>(0, (count, item) => count + item.qty.toInt());
+    final allVerified = _returnedAssetIds.length >= serializedCount &&
         quantityItems.every((item) => _returnedQuantities.containsKey(item.id));
 
     return Scaffold(
@@ -347,7 +321,7 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Items (${_verifiedIds.length + _returnedQuantities.length} / ${widget.items.length})',
+                          'Items (${_returnedAssetIds.length + _returnedQuantities.length} / ${serializedCount + quantityItems.length})',
                           style: const TextStyle(
                             color: Color(0xFFEEEEF5),
                             fontSize: 18,
@@ -420,28 +394,6 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
                                     () => _verifiedIds.add(item.id),
                                   ),
                                   child: const Text('Mark returned'),
-                                ),
-                              if (item.assetId != null)
-                                PopupMenuButton<String>(
-                                  initialValue:
-                                      _serializedDispositions[item.id] ??
-                                          'returned',
-                                  onSelected: (value) => setState(() {
-                                    _serializedDispositions[item.id] = value;
-                                    if (value == 'lost') {
-                                      _verifiedIds.add(item.id);
-                                    }
-                                  }),
-                                  itemBuilder: (_) => const [
-                                    PopupMenuItem(
-                                        value: 'returned',
-                                        child: Text('Returned')),
-                                    PopupMenuItem(
-                                        value: 'damaged',
-                                        child: Text('Damaged')),
-                                    PopupMenuItem(
-                                        value: 'lost', child: Text('Lost')),
-                                  ],
                                 ),
                             ],
                           ),
@@ -563,33 +515,14 @@ class _CheckinScannerScreenState extends ConsumerState<CheckinScannerScreen>
           })
       .toList();
 
-  List<Map<String, dynamic>> _serializedDispositionPayload() => _verifiedIds
-      .map((id) => {
-            'rental_item_id': id,
-            'disposition': _serializedDispositions[id] ?? 'returned',
-          })
-      .toList();
-
-  Future<String?> _chooseDisposition() => showDialog<String>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Return outcome'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, 'lost'),
-              child: const Text('Lost'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, 'damaged'),
-              child: const Text('Damaged'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, 'returned'),
-              child: const Text('Returned'),
-            ),
-          ],
-        ),
-      );
+  void _showNotInRentalOrVerified() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Item not in rental or already verified'),
+      backgroundColor: Color(0xFFFF5252),
+      duration: Duration(seconds: 2),
+    ));
+  }
 }
 
 String _newReturnRequestId() {

@@ -37,7 +37,7 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
   // Set of rental item IDs that have been verified.
   final Set<String> _verifiedIds = {};
   final Map<String, int> _serializedScans = {};
-  final Set<String> _scannedParentAssetIds = {};
+  final Set<String> _scannedAssetIds = {};
   final String _requestId = _newRequestId();
 
   // Track recently processed barcodes so we don't spam the API
@@ -96,7 +96,6 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
           if (lookup != null && lookup['result_type'] != 'unknown') {
             final assetId = lookup['asset_id'] as String?;
             final productId = lookup['product_id'] as String?;
-            final children = lookup['children'] as List<dynamic>? ?? [];
             if (assetId == null && lookup['tracking_mode'] == 'serialized') {
               throw McpApiException(
                 'AMBIGUOUS_PRODUCT_BARCODE',
@@ -107,67 +106,28 @@ class _CheckoutScannerScreenState extends ConsumerState<CheckoutScannerScreen>
               throw McpApiException('UNKNOWN_BARCODE',
                   'Scan an individual physical asset barcode.');
             }
+            if (_scannedAssetIds.contains(assetId)) {
+              throw McpApiException(
+                'DUPLICATE_BARCODE',
+                'This item has already been scanned.',
+              );
+            }
             await ref.read(rentalRepositoryProvider).scanCheckoutAsset(
                   rentalId: widget.rentalId,
                   barcode: rawValue,
                 );
             setState(() {
+              _scannedAssetIds.add(assetId);
               _serializedScans[productId] =
                   (_serializedScans[productId] ?? 0) + 1;
             });
-            if (assetId != null && children.isNotEmpty) {
-              _scannedParentAssetIds.add(assetId);
-            }
-
-            int newlyVerifiedCount = 0;
-
-            void verifyItem(String? aId, String? pId) {
-              RentalItem? match;
-              if (aId != null) {
-                match = widget.items
-                    .where((item) => item.assetId == aId)
-                    .firstOrNull;
-              } else if (pId != null) {
-                match = widget.items
-                    .where((item) =>
-                        item.productId == pId &&
-                        item.assetId == null &&
-                        !_verifiedIds.contains(item.id))
-                    .firstOrNull;
-              }
-
-              if (match != null && !_verifiedIds.contains(match.id)) {
-                setState(() {
-                  _verifiedIds.add(match!.id);
-                  newlyVerifiedCount++;
-                });
-              }
-            }
-
-            // Verify parent
-            verifyItem(assetId, productId);
-
-            // Verify children
-            for (final child in children) {
-              final childAssetId = child['asset_id'] as String?;
-              final childProductId = child['product_id'] as String?;
-              verifyItem(childAssetId, childProductId);
-            }
 
             if (mounted) {
-              if (newlyVerifiedCount > 0) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Verified $newlyVerifiedCount item(s)'),
-                  backgroundColor: const Color(0xFF4CAF50),
-                  duration: const Duration(seconds: 2),
-                ));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Item not in rental or already verified'),
-                  backgroundColor: Color(0xFFFF5252),
-                  duration: Duration(seconds: 2),
-                ));
-              }
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Item scanned for checkout'),
+                backgroundColor: Color(0xFF4CAF50),
+                duration: Duration(seconds: 2),
+              ));
             }
           }
         } catch (e) {
