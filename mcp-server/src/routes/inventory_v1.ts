@@ -6,6 +6,7 @@ import type { SupabaseAuthenticatedRequest } from "../middleware/supabase_auth.j
 
 const productSchema = z.object({ name: z.string().min(1), sku: z.string().optional(), category_id: z.string().uuid().nullable().optional(), manufacturer_id: z.string().uuid().nullable().optional(), tracking_mode: z.enum(["serialized", "quantity"]), daily_rate: z.number().nonnegative().default(0), notes: z.string().nullable().optional(), initial_quantity: z.number().int().nonnegative().default(0), asset_barcode: z.string().trim().min(1).max(200).optional() }).strict();
 const productPatchSchema = z.object({ name: z.string().min(1), sku: z.string().nullable(), category_id: z.string().uuid().nullable(), manufacturer_id: z.string().uuid().nullable(), daily_rate: z.number().nonnegative(), notes: z.string().nullable(), is_active: z.boolean() }).partial().strict();
+const assetPatchSchema = z.object({ asset_id: z.string().trim().min(1).max(200).optional(), status: z.enum(["available", "maintenance", "retired"]).optional() }).strict().refine((value) => value.asset_id !== undefined || value.status !== undefined);
 const clientSchema = z.object({ full_name: z.string().min(1), phone: z.string().optional(), email: z.string().email().optional().or(z.literal("")), id_document: z.string().optional(), notes: z.string().optional() }).strict();
 const clientPatchSchema = clientSchema.partial().strict();
 const assetLinkEntrySchema = z.object({ barcode: z.string().trim().min(1), name: z.string().trim().min(1).max(200).optional() }).strict();
@@ -14,6 +15,7 @@ const assetLinkSchema = z.object({ parent: assetLinkEntrySchema, children: z.arr
 // compatibility window with the previous APK.  They are deliberately ignored:
 // a booking reserves product capacity, never a specific physical asset.
 const rentalSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative().default(0), deposit_paid: z.boolean().default(false), notes: z.string().optional(), items: z.array(z.object({ product_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()).min(1), override_asset_ids: z.array(z.string().uuid()).optional(), override_reason: z.string().optional() }).strict();
+const rentalPatchSchema = z.object({ client_id: z.string().uuid(), start_date: z.string().date(), end_date: z.string().date(), deposit_amount: z.number().nonnegative(), deposit_paid: z.boolean(), notes: z.string().nullable() }).strict();
 const barcodeScanSchema = z.object({ barcode: z.string().trim().min(1).max(200) }).strict();
 const returnScanSchema = barcodeScanSchema.extend({ disposition: z.enum(["returned", "damaged", "lost"]) }).strict();
 const quantityCheckoutSchema = z.object({ quantity_lines: z.array(z.object({ rental_item_id: z.string().uuid(), quantity: z.number().int().positive() }).strict()) }).strict();
@@ -26,6 +28,18 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   app.get("/api/v1/products", auth, async (_req,res)=>{try{res.json(ok({products:await database.get("products?select=*,stock_balances(*),assets(status)&order=name.asc")}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/products/:id", auth, async (req,res)=>{try{const rows=await database.get<Array<unknown>>(`products?id=eq.${encodeURIComponent(String(req.params.id))}&select=*,stock_balances(*)`);if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Product not found"));return;}res.json(ok({product:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/products/:id/assets", auth, async (req,res)=>{try{res.json(ok({assets:await database.get(`assets?product_id=eq.${encodeURIComponent(String(req.params.id))}&select=*&order=asset_id.asc`)}));}catch(error){handleError(res,error);}});
+  app.patch("/api/v1/assets/:id", auth, async (req,res)=>{try{
+    const parsed=assetPatchSchema.safeParse(req.body);
+    if(!parsed.success){res.status(422).json(fail("VALIDATION_ERROR","Invalid asset payload"));return;}
+    const assetId=String(req.params.id);
+    const existing=await database.get<Array<{status:string}>>(`assets?id=eq.${encodeURIComponent(assetId)}&select=status`);
+    if(!existing || existing.length===0){res.status(404).json(fail("NOT_FOUND","Asset not found"));return;}
+    if(parsed.data.status !== undefined && ["reserved","rented"].includes(existing[0].status)){
+      res.status(409).json(fail("VALIDATION_ERROR","Assets assigned to a rental cannot be edited"));return;
+    }
+    const rows=await database.patch<Array<unknown>>(`assets?id=eq.${encodeURIComponent(assetId)}`,parsed.data);
+    res.json(ok({asset:rows[0]}));
+  }catch(error){handleError(res,error);}});
   app.get("/api/v1/products/:id/checkout-suggestions", auth, async (req,res)=>{try{
     const sourceId=String(req.params.id);
     const suggestions=await database.get<Array<{association_id:string;quantity_product_id:string;default_quantity:number;reason:string}>>(`checkout_suggestions?serialized_product_id=eq.${encodeURIComponent(sourceId)}&select=association_id,quantity_product_id,default_quantity,reason&order=association_id.asc`);
@@ -41,6 +55,16 @@ export function registerInventoryV1Routes(app: Express, auth: ReturnType<typeof 
   app.patch("/api/v1/clients/:id",auth,async(req,res)=>{try{const parsed=clientPatchSchema.safeParse(req.body);if(!parsed.success){res.status(422).json(fail("VALIDATION_ERROR","Invalid client payload"));return;}const rows=await database.patch<Array<unknown>>(`clients?id=eq.${encodeURIComponent(String(req.params.id))}`,parsed.data);if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Client not found"));return;}res.json(ok({client:rows[0]}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals",auth,async(_req,res)=>{try{res.json(ok({rentals:await database.get("rentals?select=*,clients(full_name)&order=created_at.desc")}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals/:id",auth,async(req,res)=>{try{const rows=await database.get<Array<unknown>>(`rentals?id=eq.${encodeURIComponent(String(req.params.id))}&select=*,clients(full_name)`);if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Rental not found"));return;}res.json(ok({rental:rows[0]}));}catch(error){handleError(res,error);}});
+  app.patch("/api/v1/rentals/:id",auth,async(req,res)=>{try{
+    const parsed=rentalPatchSchema.safeParse(req.body);
+    if(!parsed.success){res.status(422).json(fail("VALIDATION_ERROR","Invalid rental payload"));return;}
+    const id=String(req.params.id);
+    const existing=await database.get<Array<{status:string}>>(`rentals?id=eq.${encodeURIComponent(id)}&select=status`);
+    if(!existing || existing.length===0){res.status(404).json(fail("NOT_FOUND","Rental not found"));return;}
+    if(existing[0].status !== "reserved"){res.status(409).json(fail("VALIDATION_ERROR","Only reserved rentals can be edited"));return;}
+    const rows=await database.patch<Array<unknown>>(`rentals?id=eq.${encodeURIComponent(id)}`,parsed.data);
+    res.json(ok({rental:rows[0]}));
+  }catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals/:id/items",auth,async(req,res)=>{try{res.json(ok({items:await database.get(`rental_items?rental_id=eq.${encodeURIComponent(String(req.params.id))}&select=*,products(name,tracking_mode),assets!rental_items_asset_id_fkey(asset_id)`)}));}catch(error){handleError(res,error);}});
   app.get("/api/v1/rentals/:id/parent-snapshots/:parentId",auth,async(req,res)=>{try{res.json(ok({snapshots:await database.get(`rental_parent_snapshots?rental_id=eq.${encodeURIComponent(String(req.params.id))}&parent_asset_id=eq.${encodeURIComponent(String(req.params.parentId))}&select=child_asset_id`)}));}catch(error){handleError(res,error);}});
   app.patch("/api/v1/rental-items/:id/damage",auth,async(req,res)=>{try{const rows=await database.patch<Array<unknown>>(`rental_items?id=eq.${encodeURIComponent(String(req.params.id))}`,{damage_notes:String(req.body?.damage_notes??"")});if(!rows || rows.length===0){res.status(404).json(fail("NOT_FOUND","Rental item not found"));return;}res.json(ok({item:rows[0]}));}catch(error){handleError(res,error);}});
